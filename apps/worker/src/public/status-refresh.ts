@@ -29,7 +29,7 @@ import {
 const STATUS_FAST_PATCH_BASE_MAX_AGE_SECONDS = 75;
 const STATUS_FAST_PATCH_UPDATE_GRACE_SECONDS = 15;
 const STATUS_FAST_PATCH_MAX_STALE_SECONDS = 10 * 60;
-const UPTIME_DAYS = 30;
+const UPTIME_DAYS = 60;
 
 type StatusMonitor = PublicStatusResponse['monitors'][number];
 type StatusPublicSettings = SettingsResponse['settings'];

@@ -1112,7 +1112,7 @@ describe('internal sharded public snapshot fragment seed route', () => {
       [HOMEPAGE_ARTIFACT_MONITOR_FRAGMENTS_KEY, 'monitor:1'],
     ]);
     const artifactBody = JSON.parse(writes[1]![3] as string) as { card_html?: string };
-    expect(artifactBody.card_html).toContain('Availability (30d)');
+    expect(artifactBody.card_html).toContain('Availability (60d)');
   });
 
   it('seeds bounded status fragments from the current static snapshot', async () => {

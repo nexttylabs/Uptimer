@@ -156,7 +156,7 @@ describe('snapshots/public-homepage', () => {
     expect(body.name).toBe('<API & edge>');
     expect(body.group_name).toBe('Core');
     expect(body.card_html).toContain('&lt;API &amp; edge&gt;');
-    expect(body.card_html).toContain('Availability (30d)');
+    expect(body.card_html).toContain('Availability (60d)');
     expect(body.card_html).toContain('<path d="M');
     expect(body.card_html).not.toContain('<rect ');
   });

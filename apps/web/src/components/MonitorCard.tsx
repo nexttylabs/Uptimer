@@ -21,7 +21,7 @@ import {
 } from '../utils/uptime';
 
 const HEARTBEAT_BARS = 60;
-const AVAILABILITY_BARS = 30;
+const AVAILABILITY_BARS = 60;
 
 type PublicMonitorLike = Pick<
   PublicMonitor,
@@ -189,7 +189,7 @@ export function MonitorCard({
         </div>
       </div>
 
-      {/* Availability (30d) */}
+      {/* Availability (60d) */}
       <div>
         <div className="mb-2 text-[11px] text-slate-400 dark:text-slate-500">
           {t('monitor_card.availability_30d')}

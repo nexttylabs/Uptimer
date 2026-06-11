@@ -116,12 +116,12 @@ const en = {
 
   'monitor_card.never_checked': 'Never checked',
   'monitor_card.stale': 'stale',
-  'monitor_card.availability_30d': '30-day availability',
+  'monitor_card.availability_30d': '60-day availability',
   'monitor_card.last_checks': 'Last {count} checks',
   'monitor_card.fast': 'fast',
   'monitor_card.avg': 'avg',
   'monitor_card.slow': 'slow',
-  'monitor_card.uptime_title': '30-day availability',
+  'monitor_card.uptime_title': '60-day availability',
 
   'heartbeat.to': 'to',
   'heartbeat.sample_checks': '{count} checks',
@@ -168,7 +168,7 @@ const en = {
     'Current API does not support saving locale yet. This browser will remember your choice locally.',
   'admin_settings.uptime_rating.title': 'Uptime Color Rating',
   'admin_settings.uptime_rating.help':
-    'Controls the color thresholds for daily bars and 30d uptime.',
+    'Controls the color thresholds for daily bars and 60d uptime.',
   'admin_settings.uptime_rating.level_1': 'Level 1 - Personal / Hobby',
   'admin_settings.uptime_rating.level_2': 'Level 2 - Basic Business / Content',
   'admin_settings.uptime_rating.level_3': 'Level 3 - Production / SaaS',
@@ -569,12 +569,12 @@ const zhCn: LocaleMessages = {
 
   'monitor_card.never_checked': '尚未探测',
   'monitor_card.stale': '数据过期',
-  'monitor_card.availability_30d': '近 30 天可用性',
+  'monitor_card.availability_30d': '近 60 天可用性',
   'monitor_card.last_checks': '最近 {count} 次探测',
   'monitor_card.fast': '最快',
   'monitor_card.avg': '平均',
   'monitor_card.slow': '最慢',
-  'monitor_card.uptime_title': '近 30 天可用性',
+  'monitor_card.uptime_title': '近 60 天可用性',
 
   'heartbeat.to': '至',
   'heartbeat.sample_checks': '{count} 次探测',
@@ -619,7 +619,7 @@ const zhCn: LocaleMessages = {
   'admin_settings.locale.local_only':
     '当前 API 暂不支持保存语言设置，本浏览器会在本地记住你的选择。',
   'admin_settings.uptime_rating.title': '可用率颜色评级',
-  'admin_settings.uptime_rating.help': '用于控制每日柱状图与 30 天可用率的颜色阈值。',
+  'admin_settings.uptime_rating.help': '用于控制每日柱状图与 60 天可用率的颜色阈值。',
   'admin_settings.uptime_rating.level_1': '等级 1 - 个人 / 爱好项目',
   'admin_settings.uptime_rating.level_2': '等级 2 - 基础业务 / 内容站',
   'admin_settings.uptime_rating.level_3': '等级 3 - 生产环境 / SaaS',
@@ -980,12 +980,12 @@ const zhTw: LocaleMessages = {
 
   'monitor_card.never_checked': '尚未探測',
   'monitor_card.stale': '資料過期',
-  'monitor_card.availability_30d': '近 30 天可用性',
+  'monitor_card.availability_30d': '近 60 天可用性',
   'monitor_card.last_checks': '最近 {count} 次探測',
   'monitor_card.fast': '最快',
   'monitor_card.avg': '平均',
   'monitor_card.slow': '最慢',
-  'monitor_card.uptime_title': '近 30 天可用性',
+  'monitor_card.uptime_title': '近 60 天可用性',
 
   'heartbeat.to': '至',
   'heartbeat.sample_checks': '{count} 次探測',
@@ -1162,12 +1162,12 @@ const ja: LocaleMessages = {
 
   'monitor_card.never_checked': '未チェック',
   'monitor_card.stale': '古いデータ',
-  'monitor_card.availability_30d': '過去30日の可用性',
+  'monitor_card.availability_30d': '過去60日の可用性',
   'monitor_card.last_checks': '直近 {count} 回のチェック',
   'monitor_card.fast': '最速',
   'monitor_card.avg': '平均',
   'monitor_card.slow': '最遅',
-  'monitor_card.uptime_title': '過去30日の可用性',
+  'monitor_card.uptime_title': '過去60日の可用性',
 
   'heartbeat.to': '〜',
   'heartbeat.sample_checks': '{count} 回のチェック',
@@ -1344,12 +1344,12 @@ const es: LocaleMessages = {
 
   'monitor_card.never_checked': 'Nunca verificado',
   'monitor_card.stale': 'desactualizado',
-  'monitor_card.availability_30d': 'Disponibilidad de 30 dias',
+  'monitor_card.availability_30d': 'Disponibilidad de 60 dias',
   'monitor_card.last_checks': 'Ultimos {count} chequeos',
   'monitor_card.fast': 'rapido',
   'monitor_card.avg': 'prom',
   'monitor_card.slow': 'lento',
-  'monitor_card.uptime_title': 'Disponibilidad de 30 dias',
+  'monitor_card.uptime_title': 'Disponibilidad de 60 dias',
 
   'heartbeat.to': 'a',
   'heartbeat.sample_checks': '{count} chequeos',
