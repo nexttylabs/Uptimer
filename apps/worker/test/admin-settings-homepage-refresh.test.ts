@@ -16,8 +16,6 @@ describe('admin settings homepage snapshot refresh', () => {
 
   it('queues a homepage snapshot refresh after settings writes', async () => {
     const settingsMap = new Map<string, string>([
-      ['site_title', 'Uptimer'],
-      ['site_description', ''],
       ['site_locale', 'auto'],
       ['site_timezone', 'UTC'],
       ['retention_check_results_days', '7'],
@@ -61,7 +59,7 @@ describe('admin settings homepage snapshot refresh', () => {
       new Request('https://status.example.com/', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ site_title: 'Status Hub' }),
+        body: JSON.stringify({ uptime_rating_level: 4 }),
       }),
       env,
       { waitUntil } as unknown as ExecutionContext,
@@ -70,7 +68,7 @@ describe('admin settings homepage snapshot refresh', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({
       settings: {
-        site_title: 'Status Hub',
+        uptime_rating_level: 4,
       },
     });
     expect(waitUntil).toHaveBeenCalledTimes(1);

@@ -2,9 +2,6 @@ import { z } from 'zod';
 
 export const settingsPatchInputSchema = z
   .object({
-    site_title: z.string().min(1).max(100).optional(),
-    site_description: z.string().max(500).optional(),
-
     site_locale: z.enum(['auto', 'en', 'zh-CN', 'zh-TW', 'ja', 'es']).optional(),
 
     // IANA timezone, e.g. 'UTC', 'Asia/Shanghai'.

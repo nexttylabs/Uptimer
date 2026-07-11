@@ -28,6 +28,7 @@ export interface Incident {
   started_at: number;
   resolved_at: number | null;
   monitor_ids: number[];
+  status_page_ids: number[];
   updates: IncidentUpdate[];
 }
 
@@ -39,6 +40,7 @@ export interface MaintenanceWindow {
   ends_at: number;
   created_at: number;
   monitor_ids: number[];
+  status_page_ids: number[];
 }
 
 export interface Heartbeat {
@@ -551,6 +553,7 @@ export interface CreateIncidentInput {
   message?: string;
   started_at?: number;
   monitor_ids: number[];
+  status_page_ids: number[];
 }
 
 export interface CreateIncidentUpdateInput {
@@ -568,6 +571,7 @@ export interface CreateMaintenanceWindowInput {
   starts_at: number;
   ends_at: number;
   monitor_ids: number[];
+  status_page_ids: number[];
 }
 
 export interface PatchMaintenanceWindowInput {
@@ -575,6 +579,42 @@ export interface PatchMaintenanceWindowInput {
   message?: string | null;
   starts_at?: number;
   ends_at?: number;
+  monitor_ids?: number[];
+  status_page_ids?: number[];
+}
+
+// Status pages
+export interface StatusPage {
+  id: number;
+  slug: string;
+  name: string;
+  title: string;
+  description: string;
+  is_public: boolean;
+  monitor_ids: number[];
+  created_at: number;
+  updated_at: number;
+}
+
+export interface StatusPagesResponse {
+  status_pages: StatusPage[];
+}
+
+export interface CreateStatusPageInput {
+  slug: string;
+  name: string;
+  title: string;
+  description?: string;
+  is_public?: boolean;
+  monitor_ids?: number[];
+}
+
+export interface PatchStatusPageInput {
+  slug?: string;
+  name?: string;
+  title?: string;
+  description?: string;
+  is_public?: boolean;
   monitor_ids?: number[];
 }
 
@@ -587,8 +627,6 @@ export interface ApiError {
 
 // Admin settings (non-sensitive, stored in D1 settings table)
 export interface AdminSettings {
-  site_title: string;
-  site_description: string;
   site_locale: LocaleSetting;
   site_timezone: string;
 

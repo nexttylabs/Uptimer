@@ -33,13 +33,20 @@ import {
   deleteMaintenanceWindow,
   fetchAdminSettings,
   patchAdminSettings,
+  fetchAdminStatusPages,
+  createStatusPage,
+  updateStatusPage,
+  deleteStatusPage,
 } from '../api/client';
 import type {
   AdminMonitor,
   AdminSettings,
+  CreateStatusPageInput,
   Incident,
   MaintenanceWindow,
   NotificationChannel,
+  PatchStatusPageInput,
+  StatusPage,
   StatusResponse,
 } from '../api/types';
 import { IncidentForm } from '../components/IncidentForm';
@@ -48,6 +55,7 @@ import { MaintenanceWindowForm } from '../components/MaintenanceWindowForm';
 import { MonitorForm } from '../components/MonitorForm';
 import { NotificationChannelForm } from '../components/NotificationChannelForm';
 import { ResolveIncidentForm } from '../components/ResolveIncidentForm';
+import { StatusPageForm } from '../components/StatusPageForm';
 import {
   Badge,
   Button,
@@ -62,7 +70,7 @@ import { incidentImpactLabel, incidentStatusLabel, statusLabel } from '../i18n/l
 import { localeLabels, messages } from '../i18n/messages';
 import { formatDateTime } from '../utils/datetime';
 
-type Tab = 'monitors' | 'notifications' | 'incidents' | 'maintenance' | 'settings';
+type Tab = 'monitors' | 'notifications' | 'incidents' | 'maintenance' | 'status-pages' | 'settings';
 
 type ModalState =
   | { type: 'none' }
@@ -74,7 +82,9 @@ type ModalState =
   | { type: 'add-incident-update'; incident: Incident }
   | { type: 'resolve-incident'; incident: Incident }
   | { type: 'create-maintenance' }
-  | { type: 'edit-maintenance'; window: MaintenanceWindow };
+  | { type: 'edit-maintenance'; window: MaintenanceWindow }
+  | { type: 'create-status-page' }
+  | { type: 'edit-status-page'; page: StatusPage };
 
 type MonitorTestFeedback = {
   at: number;
@@ -158,6 +168,11 @@ const tabs: { key: Tab; labelKey: MessageKey; icon: string }[] = [
     labelKey: 'admin_dashboard.tab.maintenance',
     icon: 'M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z',
   },
+  {
+    key: 'status-pages',
+    labelKey: 'admin_dashboard.tab.status_pages',
+    icon: 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+  },
 ];
 
 function formatError(err: unknown): string | undefined {
@@ -172,16 +187,6 @@ function isUnsupportedSiteLocaleError(err: unknown): boolean {
   if (err.code !== 'INVALID_ARGUMENT') return false;
   const m = err.message.toLowerCase();
   return m.includes('site_locale') && m.includes('unrecognized');
-}
-
-function sanitizeSiteTitle(value: string): string {
-  const trimmed = value.trim();
-  if (trimmed.length === 0) return 'Uptimer';
-  return trimmed.slice(0, 100);
-}
-
-function sanitizeSiteDescription(value: string): string {
-  return value.trim().slice(0, 500);
 }
 
 function clampInt(value: number, min: number, max: number): number {
@@ -330,6 +335,11 @@ export function AdminDashboard() {
     queryFn: () => fetchMaintenanceWindows(),
   });
 
+  const statusPagesQuery = useQuery({
+    queryKey: ['admin-status-pages'],
+    queryFn: () => fetchAdminStatusPages(),
+  });
+
   const settingsQuery = useQuery({
     queryKey: ['admin-settings'],
     queryFn: fetchAdminSettings,
@@ -337,11 +347,10 @@ export function AdminDashboard() {
 
   const settings = settingsQuery.data?.settings;
   useApplyServerLocaleSetting(settings?.site_locale);
-  const siteTitle = settings?.site_title?.trim() || 'Uptimer';
 
   useEffect(() => {
-    document.title = `${siteTitle} · ${t('admin_dashboard.document_title_suffix')}`;
-  }, [siteTitle, t]);
+    document.title = `Uptimer · ${t('admin_dashboard.document_title_suffix')}`;
+  }, [t]);
 
   const [settingsDraft, setSettingsDraft] = useState<AdminSettings | null>(null);
   const [focusedSetting, setFocusedSetting] = useState<keyof AdminSettings | null>(null);
@@ -393,15 +402,13 @@ export function AdminDashboard() {
         });
       }
 
-      // Keep status page data in sync for fields used there (title + uptime rating).
+      // Keep status page data in sync for global locale and uptime rating.
       if (prevStatus) {
-        const nextSiteTitle = typeof patch.site_title === 'string' ? patch.site_title : undefined;
         const nextRating = patch.uptime_rating_level as 1 | 2 | 3 | 4 | 5 | undefined;
         const nextLocale = patch.site_locale;
 
         queryClient.setQueryData<StatusResponse>(['status'], {
           ...prevStatus,
-          ...(nextSiteTitle ? { site_title: nextSiteTitle } : {}),
           ...(typeof nextLocale === 'string' ? { site_locale: nextLocale } : {}),
           ...(nextRating
             ? {
@@ -445,15 +452,12 @@ export function AdminDashboard() {
 
       setSettingsDraft(data.settings);
 
-      // Update status query cache so StatusPage header updates instantly.
-      const title = data.settings.site_title;
       const level = data.settings.uptime_rating_level;
       const localeSetting = data.settings.site_locale;
       queryClient.setQueryData<StatusResponse>(['status'], (old) =>
         old
           ? {
               ...old,
-              site_title: title,
               site_locale: localeSetting,
               uptime_rating_level: level,
               monitors: old.monitors.map((m) => ({ ...m, uptime_rating_level: level })),
@@ -705,9 +709,46 @@ export function AdminDashboard() {
     },
   });
 
+  const createStatusPageMut = useMutation({
+    mutationFn: createStatusPage,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['admin-status-pages'] });
+      closeModal();
+    },
+  });
+  const updateStatusPageMut = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Parameters<typeof updateStatusPage>[1] }) =>
+      updateStatusPage(id, data),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['admin-status-pages'] });
+      closeModal();
+    },
+  });
+  const deleteStatusPageMut = useMutation({
+    mutationFn: deleteStatusPage,
+    onSuccess: (_data, id) => {
+      queryClient.setQueryData(
+        ['admin-status-pages'],
+        (old: { status_pages: StatusPage[] } | undefined) => ({
+          status_pages: (old?.status_pages ?? []).filter((p) => p.id !== id),
+        }),
+      );
+    },
+  });
+
   const monitorNameById = useMemo(
     () => new Map((monitorsQuery.data?.monitors ?? []).map((m) => [m.id, m.name] as const)),
     [monitorsQuery.data?.monitors],
+  );
+
+  const statusPageOptions = useMemo(
+    () =>
+      (statusPagesQuery.data?.status_pages ?? []).map((p) => ({
+        id: p.id,
+        name: p.name,
+        slug: p.slug,
+      })),
+    [statusPagesQuery.data?.status_pages],
   );
 
   const monitorGroupMetaByLabel = useMemo(() => {
@@ -1952,107 +1993,41 @@ export function AdminDashboard() {
             </Card>
 
             <Card className="p-4 sm:p-5">
-              <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
                   <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                    {t('admin_settings.branding.title')}
+                    {t('admin_settings.branding.timezone')}
                   </div>
                   <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    {t('admin_settings.branding.help')}
+                    {t('admin_settings.branding.timezone_help')}
                   </div>
                 </div>
-
-                <div className="grid sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-                      {t('admin_settings.branding.site_title')}
-                    </label>
-                    <input
-                      value={settingsDraft?.site_title ?? ''}
-                      aria-label={t('admin_settings.branding.site_title')}
-                      onChange={(e) => {
-                        const next = e.target.value.slice(0, 100);
-                        setSettingsDraft((prev) => (prev ? { ...prev, site_title: next } : prev));
-                      }}
-                      onFocus={() => setFocusedSetting('site_title')}
-                      onBlur={(e) => {
-                        setFocusedSetting(null);
-                        const next = sanitizeSiteTitle(e.currentTarget.value);
-                        setSettingsDraft((prev) => (prev ? { ...prev, site_title: next } : prev));
-                        patchSettingsMut.mutate({ site_title: next });
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key !== 'Enter') return;
-                        (e.currentTarget as HTMLInputElement).blur();
-                      }}
-                      disabled={settingsQuery.isLoading || !settingsDraft}
-                      className="w-full border dark:border-slate-600 rounded px-3 py-2 text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 disabled:opacity-50"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-                      {t('admin_settings.branding.timezone')}
-                    </label>
-                    <input
-                      value={settingsDraft?.site_timezone ?? ''}
-                      aria-label={t('admin_settings.branding.timezone')}
-                      onChange={(e) => {
-                        const next = e.target.value.slice(0, 64);
-                        setSettingsDraft((prev) =>
-                          prev ? { ...prev, site_timezone: next } : prev,
-                        );
-                      }}
-                      onFocus={() => setFocusedSetting('site_timezone')}
-                      onBlur={(e) => {
-                        setFocusedSetting(null);
-                        const next = e.currentTarget.value.trim().slice(0, 64) || 'UTC';
-                        setSettingsDraft((prev) =>
-                          prev ? { ...prev, site_timezone: next } : prev,
-                        );
-                        patchSettingsMut.mutate({ site_timezone: next });
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key !== 'Enter') return;
-                        (e.currentTarget as HTMLInputElement).blur();
-                      }}
-                      disabled={settingsQuery.isLoading || !settingsDraft}
-                      placeholder="UTC"
-                      className="w-full border dark:border-slate-600 rounded px-3 py-2 text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 disabled:opacity-50"
-                    />
-                    <div className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-                      {t('admin_settings.branding.timezone_help')}
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-                    {t('admin_settings.branding.site_description')}
-                  </label>
-                  <textarea
-                    value={settingsDraft?.site_description ?? ''}
-                    aria-label={t('admin_settings.branding.site_description')}
-                    onChange={(e) => {
-                      const next = e.target.value.slice(0, 500);
-                      setSettingsDraft((prev) =>
-                        prev ? { ...prev, site_description: next } : prev,
-                      );
-                    }}
-                    onFocus={() => setFocusedSetting('site_description')}
-                    onBlur={(e) => {
-                      setFocusedSetting(null);
-                      const next = sanitizeSiteDescription(e.currentTarget.value);
-                      setSettingsDraft((prev) =>
-                        prev ? { ...prev, site_description: next } : prev,
-                      );
-                      patchSettingsMut.mutate({ site_description: next });
-                    }}
-                    disabled={settingsQuery.isLoading || !settingsDraft}
-                    rows={3}
-                    className="w-full border dark:border-slate-600 rounded px-3 py-2 text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 disabled:opacity-50"
-                  />
-                </div>
+                <input
+                  value={settingsDraft?.site_timezone ?? ''}
+                  aria-label={t('admin_settings.branding.timezone')}
+                  onChange={(e) => {
+                    const next = e.target.value.slice(0, 64);
+                    setSettingsDraft((prev) =>
+                      prev ? { ...prev, site_timezone: next } : prev,
+                    );
+                  }}
+                  onFocus={() => setFocusedSetting('site_timezone')}
+                  onBlur={(e) => {
+                    setFocusedSetting(null);
+                    const next = e.currentTarget.value.trim().slice(0, 64) || 'UTC';
+                    setSettingsDraft((prev) =>
+                      prev ? { ...prev, site_timezone: next } : prev,
+                    );
+                    patchSettingsMut.mutate({ site_timezone: next });
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter') return;
+                    (e.currentTarget as HTMLInputElement).blur();
+                  }}
+                  disabled={settingsQuery.isLoading || !settingsDraft}
+                  placeholder="UTC"
+                  className="w-full sm:w-[21rem] border dark:border-slate-600 rounded px-3 py-2 text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 disabled:opacity-50"
+                />
               </div>
             </Card>
 
@@ -2476,6 +2451,113 @@ export function AdminDashboard() {
             )}
           </div>
         )}
+
+        {tab === 'status-pages' && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+                {t('admin_dashboard.tab.status_pages')}
+              </h2>
+              <Button onClick={() => setModal({ type: 'create-status-page' })}>
+                {t('admin_dashboard.create_status_page')}
+              </Button>
+            </div>
+            {statusPagesQuery.isLoading ? (
+              <div className="text-slate-500 dark:text-slate-400">{t('common.loading')}</div>
+            ) : !statusPagesQuery.data?.status_pages.length ? (
+              <Card className="p-6 sm:p-8 text-center text-slate-500 dark:text-slate-400">
+                {t('admin_dashboard.no_status_pages_yet')}
+              </Card>
+            ) : (
+              <Card className="overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[640px]">
+                    <thead className="bg-slate-50 dark:bg-slate-700/50 border-b border-slate-100 dark:border-slate-700">
+                      <tr>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                          {t('common.name')}
+                        </th>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                          {t('admin_dashboard.status_page_slug')}
+                        </th>
+                        <th className="hidden sm:table-cell px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                          {t('common.monitors')}
+                        </th>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                          {t('admin_dashboard.status_page_visibility')}
+                        </th>
+                        <th className="px-3 sm:px-4 py-3 text-right text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                          {t('common.actions')}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                      {statusPagesQuery.data.status_pages.map((p) => (
+                        <tr
+                          key={p.id}
+                          className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+                        >
+                          <td className="px-3 sm:px-4 py-3 text-sm font-medium text-slate-900 dark:text-slate-100">
+                            {p.name}
+                          </td>
+                          <td className="px-3 sm:px-4 py-3 text-sm text-slate-500 dark:text-slate-400">
+                            <a
+                              href={`/status/${p.slug}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-slate-700 underline decoration-slate-300 underline-offset-2 hover:text-slate-950 dark:text-slate-300 dark:decoration-slate-600 dark:hover:text-slate-50"
+                            >
+                              /status/{p.slug}
+                            </a>
+                          </td>
+                          <td className="hidden sm:table-cell px-3 sm:px-4 py-3 text-xs text-slate-500 dark:text-slate-400">
+                            {p.monitor_ids.length}
+                          </td>
+                          <td className="px-3 sm:px-4 py-3">
+                            <Badge variant={p.is_public ? 'up' : 'unknown'}>
+                              {p.is_public
+                                ? t('admin_dashboard.status_page_public')
+                                : t('admin_dashboard.status_page_private')}
+                            </Badge>
+                          </td>
+                          <td className="px-3 sm:px-4 py-3 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1 sm:gap-0">
+                              <button
+                                onClick={() => {
+                                  createStatusPageMut.reset();
+                                  updateStatusPageMut.reset();
+                                  setModal({ type: 'edit-status-page', page: p });
+                                }}
+                                className={cn(
+                                  TABLE_ACTION_BUTTON_CLASS,
+                                  'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200',
+                                )}
+                              >
+                                {t('common.edit')}
+                              </button>
+                              <button
+                                onClick={() =>
+                                  confirm(`${t('common.delete')} "${p.name}"?`) &&
+                                  deleteStatusPageMut.mutate(p.id)
+                                }
+                                className={cn(
+                                  TABLE_ACTION_BUTTON_CLASS,
+                                  'text-red-500 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300',
+                                )}
+                              >
+                                {t('common.delete')}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
+          </div>
+        )}
       </main>
 
       {modal.type !== 'none' && (
@@ -2491,6 +2573,8 @@ export function AdminDashboard() {
               {modal.type === 'resolve-incident' && t('admin_dashboard.resolve_incident')}
               {modal.type === 'create-maintenance' && t('admin_dashboard.create_maintenance')}
               {modal.type === 'edit-maintenance' && t('admin_dashboard.edit_maintenance')}
+              {modal.type === 'create-status-page' && t('admin_dashboard.create_status_page')}
+              {modal.type === 'edit-status-page' && t('admin_dashboard.edit_status_page')}
             </h2>
 
             {(modal.type === 'create-monitor' || modal.type === 'edit-monitor') && (
@@ -2539,6 +2623,7 @@ export function AdminDashboard() {
                   id: m.id,
                   name: formatMonitorDisplayName(m),
                 }))}
+                statusPages={statusPageOptions}
                 onSubmit={(data) => createIncidentMut.mutate(data)}
                 onCancel={closeModal}
                 isLoading={createIncidentMut.isPending}
@@ -2564,6 +2649,7 @@ export function AdminDashboard() {
                   id: m.id,
                   name: formatMonitorDisplayName(m),
                 }))}
+                statusPages={statusPageOptions}
                 onSubmit={(data) => createMaintenanceMut.mutate(data)}
                 onCancel={closeModal}
                 isLoading={createMaintenanceMut.isPending}
@@ -2575,10 +2661,34 @@ export function AdminDashboard() {
                   id: m.id,
                   name: formatMonitorDisplayName(m),
                 }))}
+                statusPages={statusPageOptions}
                 window={modal.window}
                 onSubmit={(data) => updateMaintenanceMut.mutate({ id: modal.window.id, data })}
                 onCancel={closeModal}
                 isLoading={updateMaintenanceMut.isPending}
+              />
+            )}
+            {(modal.type === 'create-status-page' || modal.type === 'edit-status-page') && (
+              <StatusPageForm
+                page={modal.type === 'edit-status-page' ? modal.page : undefined}
+                monitors={(monitorsQuery.data?.monitors ?? []).map((m) => ({
+                  id: m.id,
+                  name: formatMonitorDisplayName(m),
+                }))}
+                onSubmit={(data: CreateStatusPageInput | PatchStatusPageInput) => {
+                  if (modal.type === 'edit-status-page') {
+                    updateStatusPageMut.mutate({ id: modal.page.id, data });
+                  } else {
+                    createStatusPageMut.mutate(data as CreateStatusPageInput);
+                  }
+                }}
+                onCancel={closeModal}
+                isLoading={createStatusPageMut.isPending || updateStatusPageMut.isPending}
+                error={
+                  modal.type === 'edit-status-page'
+                    ? formatError(updateStatusPageMut.error)
+                    : formatError(createStatusPageMut.error)
+                }
               />
             )}
           </div>

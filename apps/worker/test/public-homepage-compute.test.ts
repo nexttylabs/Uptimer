@@ -8,6 +8,22 @@ import {
 import { publicHomepageResponseSchema } from '../src/schemas/public-homepage';
 import { createFakeD1Database, type FakeD1QueryHandler } from './helpers/fake-d1';
 
+function createHomepageComputeDb(handlers: FakeD1QueryHandler[]): D1Database {
+  return createFakeD1Database([
+    {
+      match: (sql) => sql.includes('from status_pages') && sql.includes('where slug = ?1'),
+      first: () => ({
+        id: 1,
+        slug: 'default',
+        name: 'Default status page',
+        title: 'Status Hub',
+        description: 'Production services',
+      }),
+    },
+    ...handlers,
+  ]);
+}
+
 describe('computePublicHomepagePayload', () => {
   it('builds compact homepage monitor cards with the expected strips and uptime summary', async () => {
     const now = 1_728_000_000;
@@ -59,8 +75,6 @@ describe('computePublicHomepagePayload', () => {
       {
         match: (sql) => sql.startsWith('select key, value from settings'),
         all: () => [
-          { key: 'site_title', value: 'Status Hub' },
-          { key: 'site_description', value: 'Production services' },
           { key: 'site_locale', value: 'en' },
           { key: 'site_timezone', value: 'UTC' },
           { key: 'uptime_rating_level', value: '4' },
@@ -76,9 +90,11 @@ describe('computePublicHomepagePayload', () => {
       },
     ];
 
-    const payload = await computePublicHomepagePayload(createFakeD1Database(handlers), now);
+    const payload = await computePublicHomepagePayload(createHomepageComputeDb(handlers), now);
 
     expect(payload.generated_at).toBe(now);
+    expect(payload.site_title).toBe('Status Hub');
+    expect(payload.site_description).toBe('Production services');
     expect(payload.bootstrap_mode).toBe('full');
     expect(payload.monitor_count_total).toBe(1);
     expect(payload.uptime_rating_level).toBe(4);
@@ -148,8 +164,6 @@ describe('computePublicHomepagePayload', () => {
       {
         match: (sql) => sql.startsWith('select key, value from settings'),
         all: () => [
-          { key: 'site_title', value: 'Status Hub' },
-          { key: 'site_description', value: 'Production services' },
           { key: 'site_locale', value: 'en' },
           { key: 'site_timezone', value: 'UTC' },
           { key: 'uptime_rating_level', value: '4' },
@@ -193,7 +207,7 @@ describe('computePublicHomepagePayload', () => {
       },
     ];
 
-    const payload = await computePublicHomepagePayload(createFakeD1Database(handlers), now);
+    const payload = await computePublicHomepagePayload(createHomepageComputeDb(handlers), now);
 
     expect(payload.monitors).toHaveLength(1);
     expect(payload.monitors[0]?.uptime_30d?.uptime_pct).toBeCloseTo(100, 6);
@@ -267,8 +281,6 @@ describe('computePublicHomepagePayload', () => {
       {
         match: (sql) => sql.startsWith('select key, value from settings'),
         all: () => [
-          { key: 'site_title', value: 'Status Hub' },
-          { key: 'site_description', value: 'Production services' },
           { key: 'site_locale', value: 'en' },
           { key: 'site_timezone', value: 'UTC' },
           { key: 'uptime_rating_level', value: '4' },
@@ -321,7 +333,7 @@ describe('computePublicHomepagePayload', () => {
       },
     ];
 
-    const payload = await computePublicHomepagePayload(createFakeD1Database(handlers), now, {
+    const payload = await computePublicHomepagePayload(createHomepageComputeDb(handlers), now, {
       baseSnapshotBodyJson: JSON.stringify(baseSnapshot),
     });
 
@@ -396,8 +408,6 @@ describe('computePublicHomepagePayload', () => {
       {
         match: (sql) => sql.startsWith('select key, value from settings'),
         all: () => [
-          { key: 'site_title', value: 'Status Hub' },
-          { key: 'site_description', value: 'Production services' },
           { key: 'site_locale', value: 'en' },
           { key: 'site_timezone', value: 'UTC' },
           { key: 'uptime_rating_level', value: '4' },
@@ -471,7 +481,7 @@ describe('computePublicHomepagePayload', () => {
       },
     ];
 
-    const payload = await computePublicHomepagePayload(createFakeD1Database(handlers), now, {
+    const payload = await computePublicHomepagePayload(createHomepageComputeDb(handlers), now, {
       baseSnapshotBodyJson: JSON.stringify(baseSnapshot),
     });
 
@@ -837,7 +847,7 @@ describe('computePublicHomepagePayload', () => {
     ];
 
     const payload = await tryComputePublicHomepagePayloadFromScheduledRuntimeUpdates({
-      db: createFakeD1Database(handlers),
+      db: createHomepageComputeDb(handlers),
       now,
       baseSnapshot,
       baseSnapshotBodyJson: null,
@@ -1008,7 +1018,7 @@ describe('computePublicHomepagePayload', () => {
     ];
 
     const payload = await tryComputePublicHomepagePayloadFromScheduledRuntimeUpdates({
-      db: createFakeD1Database(handlers),
+      db: createHomepageComputeDb(handlers),
       now,
       baseSnapshot,
       baseSnapshotBodyJson: null,
@@ -1151,7 +1161,7 @@ describe('computePublicHomepagePayload', () => {
     ];
 
     const payload = await tryComputePublicHomepagePayloadFromScheduledRuntimeUpdates({
-      db: createFakeD1Database(handlers),
+      db: createHomepageComputeDb(handlers),
       now,
       baseSnapshot,
       baseSnapshotBodyJson: null,
@@ -1250,7 +1260,7 @@ describe('computePublicHomepagePayload', () => {
     ];
 
     const payload = await tryComputePublicHomepagePayloadFromScheduledRuntimeUpdates({
-      db: createFakeD1Database(handlers),
+      db: createHomepageComputeDb(handlers),
       now,
       baseSnapshot,
       baseSnapshotBodyJson: null,
@@ -1390,7 +1400,7 @@ describe('computePublicHomepagePayload', () => {
     ];
 
     const payload = await tryComputePublicHomepagePayloadFromScheduledRuntimeUpdates({
-      db: createFakeD1Database(handlers),
+      db: createHomepageComputeDb(handlers),
       now,
       baseSnapshot,
       baseSnapshotBodyJson: null,
@@ -1520,7 +1530,7 @@ describe('computePublicHomepagePayload', () => {
     ];
 
     const payload = await tryComputePublicHomepagePayloadFromScheduledRuntimeUpdates({
-      db: createFakeD1Database(handlers),
+      db: createHomepageComputeDb(handlers),
       now,
       baseSnapshot,
       baseSnapshotBodyJson: null,
@@ -1653,7 +1663,7 @@ describe('computePublicHomepagePayload', () => {
     ];
 
     const payload = await tryComputePublicHomepagePayloadFromScheduledRuntimeUpdates({
-      db: createFakeD1Database(handlers),
+      db: createHomepageComputeDb(handlers),
       now,
       baseSnapshot,
       baseSnapshotBodyJson: null,

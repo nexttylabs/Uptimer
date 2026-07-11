@@ -8,8 +8,12 @@ describe('settings patch schema', () => {
     expect(parseSettingsPatch({ site_locale: 'ja' })).toEqual({ site_locale: 'ja' });
   });
 
-  it('rejects unknown keys', () => {
+  it('rejects unknown and retired branding keys', () => {
     expect(() => parseSettingsPatch({ site_locale_x: 'en' })).toThrow(/unrecognized key/i);
+    expect(() => parseSettingsPatch({ site_title: 'Legacy title' })).toThrow(/unrecognized key/i);
+    expect(() => parseSettingsPatch({ site_description: 'Legacy description' })).toThrow(
+      /unrecognized key/i,
+    );
   });
 
   it('rejects empty patches', () => {

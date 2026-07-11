@@ -3,6 +3,22 @@ import { describe, expect, it } from 'vitest';
 import { computePublicStatusPayload } from '../src/public/status';
 import { createFakeD1Database, type FakeD1QueryHandler } from './helpers/fake-d1';
 
+function createPublicStatusDb(handlers: FakeD1QueryHandler[]): D1Database {
+  return createFakeD1Database([
+    {
+      match: 'from status_pages',
+      first: () => ({
+        id: 1,
+        slug: 'default',
+        name: 'Default status page',
+        title: 'Status Hub',
+        description: 'Production services',
+      }),
+    },
+    ...handlers,
+  ]);
+}
+
 describe('public/status payload regression', () => {
   it('keeps monitor heartbeats and uptime data stable when parallel reads are used', async () => {
     const now = 1_728_000_000;
@@ -78,7 +94,7 @@ describe('public/status payload regression', () => {
       },
     ];
 
-    const payload = await computePublicStatusPayload(createFakeD1Database(handlers), now);
+    const payload = await computePublicStatusPayload(createPublicStatusDb(handlers), now);
 
     expect(payload.site_title).toBe('Status Hub');
     expect(payload.uptime_rating_level).toBe(4);
@@ -172,7 +188,7 @@ describe('public/status payload regression', () => {
       },
     ];
 
-    const payload = await computePublicStatusPayload(createFakeD1Database(handlers), now);
+    const payload = await computePublicStatusPayload(createPublicStatusDb(handlers), now);
 
     expect(payload.overall_status).toBe('unknown');
     expect(payload.banner).toMatchObject({
@@ -285,7 +301,7 @@ describe('public/status payload regression', () => {
       },
     ];
 
-    const payload = await computePublicStatusPayload(createFakeD1Database(handlers), now);
+    const payload = await computePublicStatusPayload(createPublicStatusDb(handlers), now);
     const monitor = payload.monitors.find((m) => m.id === 12);
     const today = monitor?.uptime_days.at(-1);
 
@@ -366,7 +382,7 @@ describe('public/status payload regression', () => {
       },
     ];
 
-    const payload = await computePublicStatusPayload(createFakeD1Database(handlers), now);
+    const payload = await computePublicStatusPayload(createPublicStatusDb(handlers), now);
     expect(payload.monitors).toHaveLength(1);
 
     const monitor = payload.monitors[0];
@@ -463,7 +479,7 @@ describe('public/status payload regression', () => {
       },
     ];
 
-    const payload = await computePublicStatusPayload(createFakeD1Database(handlers), now);
+    const payload = await computePublicStatusPayload(createPublicStatusDb(handlers), now);
     const monitor = payload.monitors.find((m) => m.id === 12);
     const today = monitor?.uptime_days.at(-1);
 
@@ -546,7 +562,7 @@ describe('public/status payload regression', () => {
       },
     ];
 
-    const payload = await computePublicStatusPayload(createFakeD1Database(handlers), now);
+    const payload = await computePublicStatusPayload(createPublicStatusDb(handlers), now);
     const monitor = payload.monitors.find((m) => m.id === 12);
     const today = monitor?.uptime_days.at(-1);
 
@@ -644,7 +660,7 @@ describe('public/status payload regression', () => {
       },
     ];
 
-    const payload = await computePublicStatusPayload(createFakeD1Database(handlers), now);
+    const payload = await computePublicStatusPayload(createPublicStatusDb(handlers), now);
     const monitor = payload.monitors.find((m) => m.id === 12);
     const today = monitor?.uptime_days.at(-1);
 
@@ -753,7 +769,7 @@ describe('public/status payload regression', () => {
       },
     ];
 
-    const payload = await computePublicStatusPayload(createFakeD1Database(handlers), now);
+    const payload = await computePublicStatusPayload(createPublicStatusDb(handlers), now);
     const monitor = payload.monitors.find((m) => m.id === 12);
     const today = monitor?.uptime_days.at(-1);
 
@@ -926,7 +942,7 @@ it('filters hidden monitors and hidden-only scoped events from anonymous status 
     },
   ];
 
-  const db = createFakeD1Database(handlers);
+  const db = createPublicStatusDb(handlers);
 
   const anonymousPayload = await computePublicStatusPayload(db, now);
   expect(anonymousPayload.monitors.map((monitor) => monitor.id)).toEqual([11]);
@@ -1087,7 +1103,7 @@ it('bounds anonymous incident and maintenance status queries before expanding re
     },
   ];
 
-  const payload = await computePublicStatusPayload(createFakeD1Database(handlers), now);
+  const payload = await computePublicStatusPayload(createPublicStatusDb(handlers), now);
 
   expect(activeIncidentArgs[0]).toEqual([5]);
   expect(activeIncidentSqls[0]).toContain('limit ?1');

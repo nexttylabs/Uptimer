@@ -59,6 +59,8 @@ describe('public status page scope', () => {
 
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toMatchObject({
+      site_title: 'Partner status',
+      site_description: '',
       monitors: [],
       status_page: { slug: 'partners', name: 'Partners' },
     });

@@ -40,6 +40,7 @@ import {
   type MaintenanceWindowRow,
   type UptimeWindowTotals,
 } from './data';
+import { resolveDefaultPublicStatusPage } from './status-page';
 import {
   buildNumberedPlaceholders,
   chunkPositiveIntegerIds,
@@ -61,7 +62,10 @@ type IncidentSummary = PublicHomepageResponse['active_incidents'][number];
 type MaintenancePreview = NonNullable<PublicHomepageResponse['maintenance_history_preview']>;
 type HomepageMonitorCard = PublicHomepageResponse['monitors'][number];
 type HomepageMonitorStatus = HomepageMonitorCard['status'];
-type HomepagePublicSettings = Awaited<ReturnType<typeof readPublicSiteSettings>>;
+type HomepagePublicSettings = Awaited<ReturnType<typeof readPublicSiteSettings>> & {
+  site_title: string;
+  site_description: string;
+};
 const HOMEPAGE_FAST_PUBLIC_LOCALES = new Set<HomepagePublicSettings['site_locale']>([
   'auto',
   'en',
@@ -2183,14 +2187,14 @@ async function readHomepageScheduledFastGuardState(
         `
       SELECT
         (
-          SELECT value
-          FROM settings
-          WHERE key = 'site_title'
+          SELECT title
+          FROM status_pages
+          WHERE slug = 'default' AND is_public = 1
         ) AS site_title_value,
         (
-          SELECT value
-          FROM settings
-          WHERE key = 'site_description'
+          SELECT description
+          FROM status_pages
+          WHERE slug = 'default' AND is_public = 1
         ) AS site_description_value,
         (
           SELECT value
@@ -2507,11 +2511,13 @@ export async function computePublicHomepagePayload(
   const includeHiddenMonitors = false;
   const baseSnapshot =
     opts.baseSnapshot ?? parseHomepageSnapshotBodyJson(opts.baseSnapshotBodyJson);
-  const settingsPromise = withTraceAsync(
-    trace,
-    'homepage_settings',
-    async () => await readPublicSiteSettings(db),
-  );
+  const settingsPromise = withTraceAsync(trace, 'homepage_settings', async () => {
+    const [settings, page] = await Promise.all([
+      readPublicSiteSettings(db),
+      resolveDefaultPublicStatusPage(db),
+    ]);
+    return { ...settings, site_title: page.title, site_description: page.description };
+  });
   const maintenanceWindowsPromise = withTraceAsync(
     trace,
     'homepage_maintenance_windows',
@@ -2633,7 +2639,14 @@ export async function computePublicHomepageArtifactPayload(
   now: number,
 ): Promise<PublicHomepageResponse> {
   const includeHiddenMonitors = false;
-  const settingsPromise = readPublicSiteSettings(db);
+  const settingsPromise = Promise.all([
+    readPublicSiteSettings(db),
+    resolveDefaultPublicStatusPage(db),
+  ]).then(([settings, page]) => ({
+    ...settings,
+    site_title: page.title,
+    site_description: page.description,
+  }));
   const bootstrapRowsPromise = listHomepageMonitorRows(db, includeHiddenMonitors);
   const maintenanceWindowsPromise = listVisibleMaintenanceWindows(db, now, includeHiddenMonitors);
   const [

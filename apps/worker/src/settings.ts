@@ -9,8 +9,6 @@ import { AppError } from './middleware/errors';
 
 export type SettingsResponse = {
   settings: {
-    site_title: string;
-    site_description: string;
     site_locale: 'auto' | 'en' | 'zh-CN' | 'zh-TW' | 'ja' | 'es';
     site_timezone: string;
 
@@ -27,8 +25,6 @@ export type SettingsResponse = {
 };
 
 const DEFAULTS: SettingsResponse['settings'] = {
-  site_title: 'Uptimer',
-  site_description: '',
   site_locale: 'auto',
   site_timezone: 'UTC',
 
@@ -127,10 +123,6 @@ export async function readSettings(
     map.set(r.key, r.value);
   }
 
-  const site_title = parseStringSetting(map.get('site_title'), { max: 100 }) ?? DEFAULTS.site_title;
-  const site_description =
-    parseStringSetting(map.get('site_description'), { max: 500, allowEmpty: true }) ??
-    DEFAULTS.site_description;
   const site_locale =
     parseEnumSetting(map.get('site_locale'), [
       'auto',
@@ -171,8 +163,6 @@ export async function readSettings(
   }) ?? DEFAULTS.uptime_rating_level) as 1 | 2 | 3 | 4 | 5;
 
   const settings: SettingsResponse['settings'] = {
-    site_title,
-    site_description,
     site_locale,
     site_timezone,
 

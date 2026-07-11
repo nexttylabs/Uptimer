@@ -8,6 +8,16 @@ describe('internal status page refresh', () => {
     const operations: string[] = [];
     const db = createFakeD1Database([
       { match: 'from status_page_refresh_queue', all: () => [{ status_page_id: 4 }] },
+      {
+        match: (sql) => sql.includes('from status_pages') && sql.includes('where id = ?1'),
+        first: () => ({
+          id: 4,
+          slug: 'partners',
+          name: 'Partners',
+          title: 'Partner status',
+          description: 'Partner services',
+        }),
+      },
       { match: 'from monitors m', all: () => [] },
       { match: 'from incidents', all: () => [] },
       { match: 'from maintenance_windows', all: () => [] },

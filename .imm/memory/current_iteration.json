@@ -4,697 +4,201 @@
     "1": {
       "number": 1,
       "step_id": "U1",
-      "result": "Status-page persisted model preserves default-page compatibility",
-      "verification": "`pnpm --filter @uptimer/worker exec vitest run --config vitest.config.ts test/status-pages-migration.test.ts test/status-pages-schema.test.ts` exits zero; `pnpm --filter @uptimer/worker migrate:local` exits zero; a local D1 query proves exactly one default page exists and its monitor links match the pre-migration `show_on_status_page = 1` set",
+      "result": "Public status-page branding has one page-local source",
+      "verification": "`pnpm --filter @uptimer/worker exec vitest run --config vitest.config.ts test/status-page-branding-migration.test.ts test/admin-settings.test.ts test/admin-settings-homepage-refresh.test.ts test/public-status-pages.test.ts test/snapshots-public-status.test.ts test/snapshots-public-homepage.test.ts test/internal-homepage-refresh.test.ts && pnpm --filter @uptimer/web lint && pnpm --filter @uptimer/web typecheck && pnpm test && pnpm --filter @uptimer/worker migrate:local && git diff --check` exits zero; local browser verification sets conflicting branding on `default` and a second page, warms each route in both orders, and confirms header, `document.title`, description/Open Graph/Twitter metadata, and homepage artifact remain page-correct",
       "test_scenarios": [
-        "migration seeds the default slug deterministically",
-        "page/monitor links support shared monitors and page-local order/grouping",
-        "page incident/maintenance links are unique",
-        "existing public monitors retain visibility through default-page links",
-        "malformed or duplicate slugs fail schema validation",
-        "the old boolean is not used to decide post-migration page membership"
+        "cleanup migration removes only `site_title` and `site_description`",
+        "Settings GET omits and PATCH rejects retired fields",
+        "remaining settings retain values",
+        "unscoped public payload resolves `default`",
+        "scoped payloads and artifacts use page-local branding",
+        "missing/non-public default fails safely",
+        "page edit queues refresh",
+        "two page snapshots and HTML metadata never cross-contaminate",
+        "Admin settings no longer show branding fields",
+        "Admin document title remains `Uptimer`",
+        "all locales remain complete after removing obsolete labels"
       ],
       "discovery_cache": [
         {
-          "path": "apps/worker/migrations/0009_monitor_status_page_visibility.sql",
-          "reason": "legacy source"
+          "path": "apps/worker/migrations/0014_status_pages.sql",
+          "reason": "canonical default page"
         },
         {
-          "path": "apps/worker/migrations/0012_public_snapshot_fragments.sql",
-          "reason": "append-only migration style"
+          "path": "apps/worker/src/public/status-page.ts",
+          "reason": "page resolution"
         },
         {
-          "path": "packages/db/src/schema.ts",
-          "reason": "Drizzle mirror"
+          "path": "apps/worker/src/settings.ts",
+          "reason": "legacy settings response and parsing"
         },
         {
-          "path": "apps/worker/test/helpers/fake-d1.ts",
-          "reason": "D1 test double"
+          "path": "apps/worker/src/schemas/settings.ts",
+          "reason": "strict patch boundary"
+        },
+        {
+          "path": "apps/worker/src/public/status.ts",
+          "reason": "public payload branding"
+        },
+        {
+          "path": "apps/worker/src/public/homepage.ts",
+          "reason": "snapshot guards and payload construction"
+        },
+        {
+          "path": "apps/worker/src/public/status-refresh.ts",
+          "reason": "status guard query"
+        },
+        {
+          "path": "apps/worker/src/snapshots/public-homepage.ts",
+          "reason": "artifact and SEO metadata"
+        },
+        {
+          "path": "apps/worker/src/routes/public.ts",
+          "reason": "scoped/unscoped routes"
+        },
+        {
+          "path": "apps/web/src/pages/StatusPage.tsx",
+          "reason": "header and document title"
+        },
+        {
+          "path": "apps/web/src/pages/AdminDashboard.tsx",
+          "reason": "legacy controls/cache updates"
+        },
+        {
+          "path": "apps/web/src/api/types.ts",
+          "reason": "public/Admin contracts"
+        },
+        {
+          "path": "apps/web/public/_worker.js",
+          "reason": "Pages metadata injection"
         }
       ],
       "parallel_probes": [],
       "depends_on": [],
       "agent_hint": null,
       "state": "closed",
-      "activated_at": "2026-07-10T10:20:25Z",
+      "activated_at": "2026-07-11T14:14:02Z",
       "execution_evidence": {
         "changed_files": [
-          "apps/worker/migrations/0014_status_pages.sql",
-          "packages/db/src/schema.ts",
-          "apps/worker/test/status-pages-migration.test.ts",
-          "apps/worker/test/status-pages-schema.test.ts"
-        ],
-        "verification_result": "pass: focused tests, DB typecheck, Worker lint, and staged temporary local D1 migration passed. With one public and one hidden pre-existing monitor, post-0014 counts were default_pages=1, default_page_monitors=1, legacy_public_monitors=1, missing_from_default=0, hidden_on_default=0.",
-        "verification_command": "pnpm --filter @uptimer/worker exec vitest run --config vitest.config.ts test/status-pages-migration.test.ts test/status-pages-schema.test.ts && pnpm --filter @uptimer/db typecheck && pnpm --filter @uptimer/worker lint && staged temporary D1 execution of migrations 0001-0014",
-        "notes": "QA rework resolved: the staged D1 migration test now seeds a public and hidden monitor before applying 0014, proving the default-page link set exactly preserves legacy public visibility. The scoped diff remains migration, matching Drizzle schema, and focused tests only.",
-        "recorded_at": "2026-07-10T10:48:36Z"
-      },
-      "closed_at": "2026-07-10T10:48:50Z"
-    },
-    "2": {
-      "number": 2,
-      "step_id": "U2",
-      "result": "Admin APIs manage explicit status-page publication links safely",
-      "verification": "`pnpm --filter @uptimer/worker exec vitest run --config vitest.config.ts test/admin-status-pages.test.ts test/admin-incidents.test.ts test/admin-maintenance-windows.test.ts` exits zero",
-      "test_scenarios": [
-        "admin CRUD validates normalized unique slug",
-        "monitor assignment replaces page links atomically and retains a shared monitor on another page",
-        "incident/maintenance create and patch require explicit non-empty `status_page_ids`",
-        "monitor links remain impact metadata",
-        "invalid resource IDs fail without partial links",
-        "deletion rejects linked pages and parent deletion removes its page links"
-      ],
-      "discovery_cache": [
-        {
-          "path": "apps/worker/src/routes/admin.ts",
-          "reason": "monitor, incident, maintenance CRUD and snapshot queue"
-        },
-        {
-          "path": "apps/worker/src/schemas/",
-          "reason": "Zod boundaries"
-        },
-        {
-          "path": "apps/worker/src/public/homepage-guard-state.ts",
-          "reason": "invalidation"
-        },
-        {
-          "path": "apps/web/src/api/types.ts",
-          "reason": "shared API representations"
-        }
-      ],
-      "parallel_probes": [],
-      "depends_on": [
-        1
-      ],
-      "agent_hint": null,
-      "state": "closed",
-      "activated_at": "2026-07-10T10:49:02Z",
-      "execution_evidence": {
-        "changed_files": [
-          "apps/worker/src/routes/admin.ts",
-          "apps/worker/src/routes/admin-status-pages.ts",
-          "apps/worker/src/schemas/status-pages.ts",
-          "apps/worker/src/schemas/incidents.ts",
-          "apps/worker/src/schemas/maintenance-windows.ts",
-          "apps/worker/test/admin-status-pages.test.ts",
-          "apps/worker/test/admin-incidents.test.ts",
-          "apps/worker/test/admin-maintenance-windows.test.ts"
-        ],
-        "verification_result": "pass: 6 focused suites / 10 tests plus DB and Worker typecheck/lint passed.",
-        "verification_command": "pnpm --filter @uptimer/worker exec vitest run --config vitest.config.ts test/status-pages-migration.test.ts test/status-pages-schema.test.ts test/admin-status-pages.test.ts test/admin-incidents.test.ts test/admin-maintenance-windows.test.ts test/admin-monitor-response-assertions.test.ts && pnpm --filter @uptimer/db typecheck && pnpm --filter @uptimer/worker typecheck && pnpm --filter @uptimer/worker lint",
-        "notes": "TDD RED evidence: admin status-page route test initially failed because the route did not exist. GREEN added only Admin CRUD, validated page/monitor links, explicit status_page_ids for incident/maintenance creation, maintenance link replacement, and restrictive deletion cleanup. YAGNI audit: public routes, snapshot refresh, frontend UI, custom domains, and tenant/RBAC were not changed.",
-        "recorded_at": "2026-07-10T10:58:32Z"
-      },
-      "closed_at": "2026-07-10T10:58:50Z"
-    },
-    "3": {
-      "number": 3,
-      "step_id": "U3",
-      "result": "Page-scoped public APIs enforce publication boundaries",
-      "verification": "`pnpm --filter @uptimer/worker exec vitest run --config vitest.config.ts test/public-status-pages.test.ts test/public-status.test.ts test/public-homepage-downgrade-guard.test.ts` exits zero",
-      "test_scenarios": [
-        "slug routes return only linked monitors with page-local group/order",
-        "explicit page incidents/maintenance render even with no monitor relation",
-        "linked monitor IDs describe impact only",
-        "page A cannot read page B monitor latency/uptime/outages/day-context, incident history, maintenance history, or analytics",
-        "unknown slug and outside resource return standard `NOT_FOUND`",
-        "default aliases preserve prior public endpoint output"
-      ],
-      "discovery_cache": [
-        {
-          "path": "apps/worker/src/public/data.ts",
-          "reason": "current monitor-derived visibility"
-        },
-        {
-          "path": "apps/worker/src/public/status.ts",
-          "reason": "public payload compute"
-        },
-        {
-          "path": "apps/worker/src/public/visibility.ts",
-          "reason": "visibility predicates"
-        },
-        {
-          "path": "apps/worker/src/routes/public.ts",
-          "reason": "public resources"
-        },
-        {
-          "path": "apps/worker/src/routes/public-ui.ts",
-          "reason": "public detail resources"
-        },
-        {
-          "path": "apps/worker/src/routes/public-ui-analytics.ts",
-          "reason": "public analytics"
-        },
-        {
-          "path": "apps/worker/src/routes/public-hot.ts",
-          "reason": "hot snapshot routes"
-        }
-      ],
-      "parallel_probes": [],
-      "depends_on": [
-        2
-      ],
-      "agent_hint": null,
-      "state": "closed",
-      "activated_at": "2026-07-10T14:06:19Z",
-      "execution_evidence": {
-        "changed_files": [
-          "docs/plans/2026-07-10-multi-public-status-pages-plan.md",
+          "apps/worker/migrations/0016_status_page_branding_ownership.sql",
           "apps/worker/src/public/data.ts",
-          "apps/worker/src/public/status.ts",
+          "apps/worker/src/public/homepage.ts",
           "apps/worker/src/public/status-page.ts",
-          "apps/worker/src/routes/public.ts",
-          "apps/worker/src/routes/public-ui-analytics.ts",
-          "apps/worker/src/fetch-handler.ts",
-          "apps/worker/test/public-status-pages.test.ts"
-        ],
-        "verification_result": "pass: 19 focused tests, Worker typecheck, Worker lint, and git diff --check",
-        "verification_command": "pnpm --filter @uptimer/worker typecheck && pnpm --filter @uptimer/worker exec vitest run --config vitest.config.ts test/public-status-pages.test.ts test/public-status.test.ts test/public-homepage-downgrade-guard.test.ts && pnpm --filter @uptimer/worker lint && git diff --check",
-        "notes": "Planner rework removed U3 test-first posture because its historical RED phase cannot be reconstructed from the uncommitted working tree. Existing page-isolation regressions remain the automated verification contract.",
-        "recorded_at": "2026-07-10T14:06:42Z"
-      },
-      "closed_at": "2026-07-10T14:09:15Z"
-    },
-    "4": {
-      "number": 4,
-      "step_id": "U4",
-      "result": "Page-qualified Worker snapshot persistence prevents cross-page D1 or isolate-cache reads",
-      "verification": "`pnpm --filter @uptimer/worker exec vitest run --config vitest.config.ts test/public-page-keys.test.ts test/snapshots-public-status.test.ts test/snapshots-public-homepage.test.ts test/snapshots-public-monitor-fragments.test.ts` exits zero",
-      "test_scenarios": [
-        "centralized key factory creates distinct snapshot, artifact, fragment, runtime, and guard keys per page",
-        "D1 and Worker isolate-cache reads reject/ignore another page's rows",
-        "status/homepage artifacts and stale fallbacks remain within one page",
-        "default aliases use the default page identity"
-      ],
-      "discovery_cache": [
-        {
-          "path": "apps/worker/src/snapshots/public-status-read.ts",
-          "reason": "hard-coded status key and isolate cache"
-        },
-        {
-          "path": "apps/worker/src/snapshots/public-homepage-read.ts",
-          "reason": "hard-coded homepage/artifact keys and isolate caches"
-        },
-        {
-          "path": "apps/worker/src/snapshots/public-monitor-fragments.ts",
-          "reason": "fragment keys"
-        },
-        {
-          "path": "apps/worker/src/public/homepage-guard-state.ts",
-          "reason": "guard keys"
-        },
-        {
-          "path": "apps/worker/src/snapshots/public-page-keys.ts",
-          "reason": "central page-qualified key factory"
-        }
-      ],
-      "parallel_probes": [],
-      "depends_on": [
-        3
-      ],
-      "agent_hint": null,
-      "state": "closed",
-      "activated_at": "2026-07-11T02:40:23Z",
-      "execution_evidence": {
-        "changed_files": [
-          "docs/plans/2026-07-10-multi-public-status-pages-plan.md",
-          "apps/worker/src/snapshots/public-page-keys.ts",
-          "apps/worker/src/snapshots/public-status-read.ts",
-          "apps/worker/src/routes/public.ts",
-          "apps/worker/test/public-page-keys.test.ts",
-          "apps/worker/test/public-status-pages.test.ts"
-        ],
-        "verification_result": "pass: 68 focused tests, Worker typecheck, Worker lint, and git diff --check",
-        "verification_command": "pnpm --filter @uptimer/worker exec vitest run --config vitest.config.ts test/public-page-keys.test.ts test/snapshots-public-status.test.ts test/snapshots-public-homepage.test.ts test/snapshots-public-monitor-fragments.test.ts && pnpm --filter @uptimer/worker typecheck && pnpm --filter @uptimer/worker lint && git diff --check",
-        "notes": "After replan, U4 covers Worker snapshot persistence only. Non-default slug status reads its own page-qualified status key and falls back to page-scoped live compute on miss; it never reads the default snapshot. Page snapshot production remains U5; Pages/browser/query caches remain U6.",
-        "recorded_at": "2026-07-11T02:45:31Z"
-      },
-      "closed_at": "2026-07-11T02:46:52Z"
-    },
-    "5": {
-      "number": 5,
-      "step_id": "U5",
-      "result": "Bounded dirty-page snapshot refresh publishes page-qualified snapshots with continuation semantics",
-      "verification": "`pnpm --filter @uptimer/worker exec vitest run --config vitest.config.ts test/internal-sharded-public-snapshot.test.ts test/internal-scheduled-check-batch.test.ts test/index-scheduled.test.ts test/internal-runtime-fragments-refresh.test.ts` exits zero",
-      "test_scenarios": [
-        "a monitor runtime update marks only pages containing it dirty",
-        "page relation/incident/maintenance mutations mark only directly linked pages dirty",
-        "a bounded scheduled/internal batch publishes a continuation for remaining pages",
-        "shared monitors refresh every linked page exactly once",
-        "each non-default page writes only its own qualified snapshot and fragment keys",
-        "stale/missing page fragments do not publish another page's snapshot",
-        "default page retains existing scheduled behavior"
-      ],
-      "discovery_cache": [
-        {
-          "path": "apps/worker/src/scheduler/scheduled.ts",
-          "reason": "scheduled orchestration"
-        },
-        {
-          "path": "apps/worker/src/internal/sharded-public-snapshot-core.ts",
-          "reason": "fragment assembly and publish"
-        },
-        {
-          "path": "apps/worker/src/internal/sharded-public-snapshot-continuation.ts",
-          "reason": "bounded continuation"
-        },
-        {
-          "path": "apps/worker/src/internal/monitor-fragments-refresh-core.ts",
-          "reason": "monitor fragment refresh"
-        },
-        {
-          "path": "apps/worker/src/internal/runtime-fragments-refresh-core.ts",
-          "reason": "runtime fragment refresh"
-        },
-        {
-          "path": "apps/worker/src/snapshots/public-fragments.ts",
-          "reason": "fragment persistence"
-        }
-      ],
-      "parallel_probes": [
-        {
-          "scope": "apps/worker/src/scheduler/ and apps/worker/src/internal/",
-          "output": "current continuation and bounded-batch call graph with affected-page insertion points",
-          "readonly": true
-        },
-        {
-          "scope": "apps/worker/src/snapshots/ and apps/worker/src/public/",
-          "output": "fragment/guard key lifecycle and invalidation map",
-          "readonly": true
-        },
-        {
-          "scope": "apps/worker/test/internal-*.test.ts and test/index-scheduled.test.ts",
-          "output": "existing fake-D1/service-binding test conventions",
-          "readonly": true
-        }
-      ],
-      "depends_on": [
-        4
-      ],
-      "agent_hint": null,
-      "state": "closed",
-      "activated_at": "2026-07-11T02:46:52Z",
-      "execution_evidence": {
-        "changed_files": [
-          "apps/worker/migrations/0015_status_page_refresh_queue.sql",
-          "apps/worker/src/snapshots/status-page-refresh-queue.ts",
-          "apps/worker/src/snapshots/public-status.ts",
-          "apps/worker/src/internal/status-page-refresh-core.ts",
-          "apps/worker/src/scheduler/scheduled.ts",
+          "apps/worker/src/public/status-refresh.ts",
+          "apps/worker/src/public/status.ts",
           "apps/worker/src/routes/admin.ts",
-          "apps/worker/src/routes/admin-status-pages.ts",
-          "apps/worker/test/status-page-refresh-queue.test.ts",
-          "apps/worker/test/internal-status-page-refresh.test.ts",
-          "apps/worker/test/admin-status-pages.test.ts"
-        ],
-        "verification_result": "pass: 41 U5 baseline tests, 13 page-refresh/admin tests, Worker typecheck, Worker lint, and git diff --check",
-        "verification_command": "pnpm --filter @uptimer/worker exec vitest run --config vitest.config.ts test/internal-sharded-public-snapshot.test.ts test/internal-scheduled-check-batch.test.ts test/index-scheduled.test.ts test/internal-runtime-fragments-refresh.test.ts && pnpm --filter @uptimer/worker typecheck && pnpm --filter @uptimer/worker lint && git diff --check",
-        "notes": "Added append-only status_page_refresh_queue migration. Admin monitor/incident/maintenance create/patch/delete and status-page create/update enqueue only affected page IDs. Scheduler consumes a bounded batch (5) per tick: compute page-scoped payload, write status:page:<id>, ack on success; failure retains the queue item. Page live-miss also writes its own qualified snapshot. Default page retains existing scheduled behavior.",
-        "recorded_at": "2026-07-11T07:28:57Z"
-      },
-      "closed_at": "2026-07-11T07:29:51Z"
-    },
-    "6": {
-      "number": 6,
-      "step_id": "U6",
-      "result": "Slug-routed status page UI has page-isolated caches",
-      "verification": "`pnpm lint && pnpm typecheck && pnpm test && pnpm --filter @uptimer/worker migrate:local` exit zero; local browser verification creates two pages with a shared and exclusive monitor and confirms `/status/:slug` isolation; browser, Pages HTML cache, Worker hot cache, and React Query warm page A without serving it to page B; controlled Dev and Production Tail show `BAD_OR_GE10 count=0` for affected scheduled/internal/public paths; each page's `homepage`, `status`, and `homepage-artifact` parity endpoint returns `200`",
-      "test_scenarios": [
-        "router extracts validated slug",
-        "status/history/detail UI retains slug in every request and query key",
-        "Pages injected HTML, Worker hot cache, browser localStorage/public cache, and React Query cache are page-qualified",
-        "browser reload/local cache does not reuse another page payload",
-        "admin UI manages pages and explicit page assignments",
-        "default `/` remains a compatibility redirect/render",
-        "missing slug shows a safe not-found state",
-        "no custom domain, tenant UI, or per-page notification controls are added"
-      ],
-      "discovery_cache": [
-        {
-          "path": "apps/web/src/app/router.tsx",
-          "reason": "slug route"
-        },
-        {
-          "path": "apps/web/src/pages/StatusPage.tsx",
-          "reason": "status rendering"
-        },
-        {
-          "path": "apps/web/src/pages/IncidentHistoryPage.tsx",
-          "reason": "page-scoped incident history"
-        },
-        {
-          "path": "apps/web/src/pages/MaintenanceHistoryPage.tsx",
-          "reason": "page-scoped maintenance history"
-        },
-        {
-          "path": "apps/web/src/api/client.ts",
-          "reason": "page-scoped API/query/browser cache"
-        },
-        {
-          "path": "apps/web/src/api/types.ts",
-          "reason": "API representations"
-        },
-        {
-          "path": "apps/web/src/pages/AdminDashboard.tsx",
-          "reason": "admin management"
-        },
-        {
-          "path": "apps/web/public/_worker.js",
-          "reason": "Pages cache and proxy"
-        },
-        {
-          "path": "apps/worker/src/fetch-handler.ts",
-          "reason": "Worker hot cache"
-        },
-        {
-          "path": "Develop/Worker-CPU-10ms-Release-Readiness.md",
-          "reason": "CPU release evidence"
-        }
-      ],
-      "parallel_probes": [],
-      "depends_on": [
-        5
-      ],
-      "agent_hint": null,
-      "state": "closed",
-      "activated_at": "2026-07-11T07:29:53Z",
-      "execution_evidence": {
-        "changed_files": [
-          "apps/web/src/app/router.tsx",
-          "apps/web/src/app/StatusPageSlugContext.tsx",
-          "apps/web/src/app/AuthContext.tsx",
-          "apps/web/src/api/client.ts",
-          "apps/web/src/pages/StatusPage.tsx",
-          "apps/web/src/pages/IncidentHistoryPage.tsx",
-          "apps/web/src/pages/MaintenanceHistoryPage.tsx",
-          "apps/web/src/pages/AdminLogin.tsx",
-          "apps/web/src/main.tsx",
+          "apps/worker/src/schemas/settings.ts",
+          "apps/worker/src/settings.ts",
           "apps/web/public/_worker.js",
-          "apps/worker/src/internal/status-page-refresh-core.ts"
+          "apps/web/src/api/types.ts",
+          "apps/web/src/pages/AdminDashboard.tsx",
+          "apps/web/src/pages/StatusPage.tsx",
+          "apps/worker/test/admin-settings-homepage-refresh.test.ts",
+          "apps/worker/test/internal-status-page-refresh.test.ts",
+          "apps/worker/test/public-fast-path-guards.test.ts",
+          "apps/worker/test/public-homepage-compute.test.ts",
+          "apps/worker/test/public-status-pages.test.ts",
+          "apps/worker/test/public-status.test.ts",
+          "apps/worker/test/settings-read-write.test.ts",
+          "apps/worker/test/settings-schema.test.ts",
+          "apps/worker/test/status-page-branding-migration.test.ts"
         ],
-        "verification_result": "pass: pnpm lint + typecheck + test (491 tests, 58 files) + migrate:local all exit zero",
-        "verification_command": "pnpm lint && pnpm typecheck && pnpm test && pnpm --filter @uptimer/worker migrate:local",
-        "notes": "U6 frontend: router adds /status/:slug route; StatusPageSlugContext propagates slug to all public API calls, query keys, and localStorage keys; Pages worker HTML injection cache key includes slug; refreshQueuedStatusPageSnapshots catches errors to avoid blocking scheduled tick. HITL browser verification (two pages with shared/exclusive monitor, /status/:slug isolation, Dev/Prod Tail) still required by user.",
-        "recorded_at": "2026-07-11T08:25:21Z"
+        "verification_command": "focused branding Vitest suite; pnpm --filter @uptimer/web lint; pnpm --filter @uptimer/web typecheck; pnpm test; pnpm --filter @uptimer/worker migrate:local; git diff --check",
+        "verification_result": "automated pass: focused 90/90 tests; full Worker 495/495 tests; web lint and typecheck exit 0; local migration exit 0; git diff --check exit 0. HITL browser verification remains pending: conflicting branding on default and a second page, warmed in both orders, checking header, document.title, description/Open Graph/Twitter metadata, and homepage artifact.",
+        "notes": "Updated two stale fake-D1 fixtures after full-suite failures so they match page-local branding queries. No production logic was changed in that repair. Working tree also contains pre-existing multi-status-page admin UI changes outside U1; they were not modified or claimed here. YAGNI audit: no new abstraction, dependency, or unrelated refactor added.",
+        "recorded_at": "2026-07-11T14:46:55Z"
       },
-      "closed_at": "2026-07-11T09:22:23Z"
+      "closed_at": "2026-07-11T15:09:49Z"
     }
   },
   "pending_follow_up": null,
   "last_review": {
     "decision": "pass",
-    "evidence": "",
+    "evidence": "19/19 tests passed; git diff --check clean; rg confirms no legacy site_title/site_description rows in scope",
     "artifacts": "",
     "notes": "",
-    "recorded_at": "2026-07-11T09:22:23Z"
+    "recorded_at": "2026-07-11T16:35:50Z",
+    "target_kind": "follow_up",
+    "target_id": "follow-up-1aacdba7a168"
   },
   "validated_plan_snapshot": {
-    "plan_path": "docs/plans/2026-07-10-multi-public-status-pages-plan.md",
-    "plan_signature": "231f0c88834b3839e0a52b3a9394b4aded7f7e5dcba019150b53a3b5848e1707",
+    "plan_path": "docs/plans/2026-07-11-status-page-branding-ownership-plan.md",
+    "plan_signature": "11538e1d6fdd1bfd8eb79ec866078924cfead3c726686316c11016af81b2a503",
     "steps": [
       {
         "number": 1,
         "step_id": "U1",
-        "result": "Status-page persisted model preserves default-page compatibility",
-        "verification": "`pnpm --filter @uptimer/worker exec vitest run --config vitest.config.ts test/status-pages-migration.test.ts test/status-pages-schema.test.ts` exits zero; `pnpm --filter @uptimer/worker migrate:local` exits zero; a local D1 query proves exactly one default page exists and its monitor links match the pre-migration `show_on_status_page = 1` set",
+        "result": "Public status-page branding has one page-local source",
+        "verification": "`pnpm --filter @uptimer/worker exec vitest run --config vitest.config.ts test/status-page-branding-migration.test.ts test/admin-settings.test.ts test/admin-settings-homepage-refresh.test.ts test/public-status-pages.test.ts test/snapshots-public-status.test.ts test/snapshots-public-homepage.test.ts test/internal-homepage-refresh.test.ts && pnpm --filter @uptimer/web lint && pnpm --filter @uptimer/web typecheck && pnpm test && pnpm --filter @uptimer/worker migrate:local && git diff --check` exits zero; local browser verification sets conflicting branding on `default` and a second page, warms each route in both orders, and confirms header, `document.title`, description/Open Graph/Twitter metadata, and homepage artifact remain page-correct",
         "depends_on": [],
         "discovery_cache": [
           {
-            "path": "apps/worker/migrations/0009_monitor_status_page_visibility.sql",
-            "reason": "legacy source"
+            "path": "apps/worker/migrations/0014_status_pages.sql",
+            "reason": "canonical default page"
           },
           {
-            "path": "apps/worker/migrations/0012_public_snapshot_fragments.sql",
-            "reason": "append-only migration style"
+            "path": "apps/worker/src/public/status-page.ts",
+            "reason": "page resolution"
           },
           {
-            "path": "packages/db/src/schema.ts",
-            "reason": "Drizzle mirror"
+            "path": "apps/worker/src/settings.ts",
+            "reason": "legacy settings response and parsing"
           },
           {
-            "path": "apps/worker/test/helpers/fake-d1.ts",
-            "reason": "D1 test double"
-          }
-        ],
-        "parallel_probes": [],
-        "agent_hint": null,
-        "test_scenarios": [
-          "migration seeds the default slug deterministically",
-          "page/monitor links support shared monitors and page-local order/grouping",
-          "page incident/maintenance links are unique",
-          "existing public monitors retain visibility through default-page links",
-          "malformed or duplicate slugs fail schema validation",
-          "the old boolean is not used to decide post-migration page membership"
-        ]
-      },
-      {
-        "number": 2,
-        "step_id": "U2",
-        "result": "Admin APIs manage explicit status-page publication links safely",
-        "verification": "`pnpm --filter @uptimer/worker exec vitest run --config vitest.config.ts test/admin-status-pages.test.ts test/admin-incidents.test.ts test/admin-maintenance-windows.test.ts` exits zero",
-        "depends_on": [
-          1
-        ],
-        "discovery_cache": [
-          {
-            "path": "apps/worker/src/routes/admin.ts",
-            "reason": "monitor, incident, maintenance CRUD and snapshot queue"
-          },
-          {
-            "path": "apps/worker/src/schemas/",
-            "reason": "Zod boundaries"
-          },
-          {
-            "path": "apps/worker/src/public/homepage-guard-state.ts",
-            "reason": "invalidation"
-          },
-          {
-            "path": "apps/web/src/api/types.ts",
-            "reason": "shared API representations"
-          }
-        ],
-        "parallel_probes": [],
-        "agent_hint": null,
-        "test_scenarios": [
-          "admin CRUD validates normalized unique slug",
-          "monitor assignment replaces page links atomically and retains a shared monitor on another page",
-          "incident/maintenance create and patch require explicit non-empty `status_page_ids`",
-          "monitor links remain impact metadata",
-          "invalid resource IDs fail without partial links",
-          "deletion rejects linked pages and parent deletion removes its page links"
-        ]
-      },
-      {
-        "number": 3,
-        "step_id": "U3",
-        "result": "Page-scoped public APIs enforce publication boundaries",
-        "verification": "`pnpm --filter @uptimer/worker exec vitest run --config vitest.config.ts test/public-status-pages.test.ts test/public-status.test.ts test/public-homepage-downgrade-guard.test.ts` exits zero",
-        "depends_on": [
-          2
-        ],
-        "discovery_cache": [
-          {
-            "path": "apps/worker/src/public/data.ts",
-            "reason": "current monitor-derived visibility"
+            "path": "apps/worker/src/schemas/settings.ts",
+            "reason": "strict patch boundary"
           },
           {
             "path": "apps/worker/src/public/status.ts",
-            "reason": "public payload compute"
+            "reason": "public payload branding"
           },
           {
-            "path": "apps/worker/src/public/visibility.ts",
-            "reason": "visibility predicates"
+            "path": "apps/worker/src/public/homepage.ts",
+            "reason": "snapshot guards and payload construction"
+          },
+          {
+            "path": "apps/worker/src/public/status-refresh.ts",
+            "reason": "status guard query"
+          },
+          {
+            "path": "apps/worker/src/snapshots/public-homepage.ts",
+            "reason": "artifact and SEO metadata"
           },
           {
             "path": "apps/worker/src/routes/public.ts",
-            "reason": "public resources"
-          },
-          {
-            "path": "apps/worker/src/routes/public-ui.ts",
-            "reason": "public detail resources"
-          },
-          {
-            "path": "apps/worker/src/routes/public-ui-analytics.ts",
-            "reason": "public analytics"
-          },
-          {
-            "path": "apps/worker/src/routes/public-hot.ts",
-            "reason": "hot snapshot routes"
-          }
-        ],
-        "parallel_probes": [],
-        "agent_hint": null,
-        "test_scenarios": [
-          "slug routes return only linked monitors with page-local group/order",
-          "explicit page incidents/maintenance render even with no monitor relation",
-          "linked monitor IDs describe impact only",
-          "page A cannot read page B monitor latency/uptime/outages/day-context, incident history, maintenance history, or analytics",
-          "unknown slug and outside resource return standard `NOT_FOUND`",
-          "default aliases preserve prior public endpoint output"
-        ]
-      },
-      {
-        "number": 4,
-        "step_id": "U4",
-        "result": "Page-qualified Worker snapshot persistence prevents cross-page D1 or isolate-cache reads",
-        "verification": "`pnpm --filter @uptimer/worker exec vitest run --config vitest.config.ts test/public-page-keys.test.ts test/snapshots-public-status.test.ts test/snapshots-public-homepage.test.ts test/snapshots-public-monitor-fragments.test.ts` exits zero",
-        "depends_on": [
-          3
-        ],
-        "discovery_cache": [
-          {
-            "path": "apps/worker/src/snapshots/public-status-read.ts",
-            "reason": "hard-coded status key and isolate cache"
-          },
-          {
-            "path": "apps/worker/src/snapshots/public-homepage-read.ts",
-            "reason": "hard-coded homepage/artifact keys and isolate caches"
-          },
-          {
-            "path": "apps/worker/src/snapshots/public-monitor-fragments.ts",
-            "reason": "fragment keys"
-          },
-          {
-            "path": "apps/worker/src/public/homepage-guard-state.ts",
-            "reason": "guard keys"
-          },
-          {
-            "path": "apps/worker/src/snapshots/public-page-keys.ts",
-            "reason": "central page-qualified key factory"
-          }
-        ],
-        "parallel_probes": [],
-        "agent_hint": null,
-        "test_scenarios": [
-          "centralized key factory creates distinct snapshot, artifact, fragment, runtime, and guard keys per page",
-          "D1 and Worker isolate-cache reads reject/ignore another page's rows",
-          "status/homepage artifacts and stale fallbacks remain within one page",
-          "default aliases use the default page identity"
-        ]
-      },
-      {
-        "number": 5,
-        "step_id": "U5",
-        "result": "Bounded dirty-page snapshot refresh publishes page-qualified snapshots with continuation semantics",
-        "verification": "`pnpm --filter @uptimer/worker exec vitest run --config vitest.config.ts test/internal-sharded-public-snapshot.test.ts test/internal-scheduled-check-batch.test.ts test/index-scheduled.test.ts test/internal-runtime-fragments-refresh.test.ts` exits zero",
-        "depends_on": [
-          4
-        ],
-        "discovery_cache": [
-          {
-            "path": "apps/worker/src/scheduler/scheduled.ts",
-            "reason": "scheduled orchestration"
-          },
-          {
-            "path": "apps/worker/src/internal/sharded-public-snapshot-core.ts",
-            "reason": "fragment assembly and publish"
-          },
-          {
-            "path": "apps/worker/src/internal/sharded-public-snapshot-continuation.ts",
-            "reason": "bounded continuation"
-          },
-          {
-            "path": "apps/worker/src/internal/monitor-fragments-refresh-core.ts",
-            "reason": "monitor fragment refresh"
-          },
-          {
-            "path": "apps/worker/src/internal/runtime-fragments-refresh-core.ts",
-            "reason": "runtime fragment refresh"
-          },
-          {
-            "path": "apps/worker/src/snapshots/public-fragments.ts",
-            "reason": "fragment persistence"
-          }
-        ],
-        "parallel_probes": [
-          {
-            "scope": "apps/worker/src/scheduler/ and apps/worker/src/internal/",
-            "output": "current continuation and bounded-batch call graph with affected-page insertion points",
-            "readonly": true
-          },
-          {
-            "scope": "apps/worker/src/snapshots/ and apps/worker/src/public/",
-            "output": "fragment/guard key lifecycle and invalidation map",
-            "readonly": true
-          },
-          {
-            "scope": "apps/worker/test/internal-*.test.ts and test/index-scheduled.test.ts",
-            "output": "existing fake-D1/service-binding test conventions",
-            "readonly": true
-          }
-        ],
-        "agent_hint": null,
-        "test_scenarios": [
-          "a monitor runtime update marks only pages containing it dirty",
-          "page relation/incident/maintenance mutations mark only directly linked pages dirty",
-          "a bounded scheduled/internal batch publishes a continuation for remaining pages",
-          "shared monitors refresh every linked page exactly once",
-          "each non-default page writes only its own qualified snapshot and fragment keys",
-          "stale/missing page fragments do not publish another page's snapshot",
-          "default page retains existing scheduled behavior"
-        ]
-      },
-      {
-        "number": 6,
-        "step_id": "U6",
-        "result": "Slug-routed status page UI has page-isolated caches",
-        "verification": "`pnpm lint && pnpm typecheck && pnpm test && pnpm --filter @uptimer/worker migrate:local` exit zero; local browser verification creates two pages with a shared and exclusive monitor and confirms `/status/:slug` isolation; browser, Pages HTML cache, Worker hot cache, and React Query warm page A without serving it to page B; controlled Dev and Production Tail show `BAD_OR_GE10 count=0` for affected scheduled/internal/public paths; each page's `homepage`, `status`, and `homepage-artifact` parity endpoint returns `200`",
-        "depends_on": [
-          5
-        ],
-        "discovery_cache": [
-          {
-            "path": "apps/web/src/app/router.tsx",
-            "reason": "slug route"
+            "reason": "scoped/unscoped routes"
           },
           {
             "path": "apps/web/src/pages/StatusPage.tsx",
-            "reason": "status rendering"
-          },
-          {
-            "path": "apps/web/src/pages/IncidentHistoryPage.tsx",
-            "reason": "page-scoped incident history"
-          },
-          {
-            "path": "apps/web/src/pages/MaintenanceHistoryPage.tsx",
-            "reason": "page-scoped maintenance history"
-          },
-          {
-            "path": "apps/web/src/api/client.ts",
-            "reason": "page-scoped API/query/browser cache"
-          },
-          {
-            "path": "apps/web/src/api/types.ts",
-            "reason": "API representations"
+            "reason": "header and document title"
           },
           {
             "path": "apps/web/src/pages/AdminDashboard.tsx",
-            "reason": "admin management"
+            "reason": "legacy controls/cache updates"
+          },
+          {
+            "path": "apps/web/src/api/types.ts",
+            "reason": "public/Admin contracts"
           },
           {
             "path": "apps/web/public/_worker.js",
-            "reason": "Pages cache and proxy"
-          },
-          {
-            "path": "apps/worker/src/fetch-handler.ts",
-            "reason": "Worker hot cache"
-          },
-          {
-            "path": "Develop/Worker-CPU-10ms-Release-Readiness.md",
-            "reason": "CPU release evidence"
+            "reason": "Pages metadata injection"
           }
         ],
         "parallel_probes": [],
         "agent_hint": null,
         "test_scenarios": [
-          "router extracts validated slug",
-          "status/history/detail UI retains slug in every request and query key",
-          "Pages injected HTML, Worker hot cache, browser localStorage/public cache, and React Query cache are page-qualified",
-          "browser reload/local cache does not reuse another page payload",
-          "admin UI manages pages and explicit page assignments",
-          "default `/` remains a compatibility redirect/render",
-          "missing slug shows a safe not-found state",
-          "no custom domain, tenant UI, or per-page notification controls are added"
+          "cleanup migration removes only `site_title` and `site_description`",
+          "Settings GET omits and PATCH rejects retired fields",
+          "remaining settings retain values",
+          "unscoped public payload resolves `default`",
+          "scoped payloads and artifacts use page-local branding",
+          "missing/non-public default fails safely",
+          "page edit queues refresh",
+          "two page snapshots and HTML metadata never cross-contaminate",
+          "Admin settings no longer show branding fields",
+          "Admin document title remains `Uptimer`",
+          "all locales remain complete after removing obsolete labels"
         ]
       }
     ]
@@ -1002,21 +506,143 @@
       "details": {
         "plan_path": "docs/plans/2026-07-10-multi-public-status-pages-plan.md"
       }
+    },
+    {
+      "at": "2026-07-11T09:45:24Z",
+      "action": "sync_plan_from_imm_plan",
+      "details": {
+        "plan_path": "docs/plans/2026-07-11-multi-status-page-admin-ui-plan.md",
+        "plan_signature": "b4c958ed7043dced7b3e1a80c457854fcb6819a999416235de2fa58c37bffcac",
+        "same_plan": false
+      }
+    },
+    {
+      "at": "2026-07-11T10:49:52Z",
+      "action": "review_step",
+      "details": {
+        "step_number": 1,
+        "step_id": "U1",
+        "decision": "rework",
+        "target_kind": "plan_step"
+      }
+    },
+    {
+      "at": "2026-07-11T14:10:45Z",
+      "action": "sync_plan_from_imm_plan",
+      "details": {
+        "plan_path": "docs/plans/2026-07-11-status-page-branding-ownership-plan.md",
+        "plan_signature": "11538e1d6fdd1bfd8eb79ec866078924cfead3c726686316c11016af81b2a503",
+        "same_plan": false
+      }
+    },
+    {
+      "at": "2026-07-11T15:09:49Z",
+      "action": "review_step",
+      "details": {
+        "step_number": 1,
+        "step_id": "U1",
+        "decision": "pass",
+        "target_kind": "plan_step"
+      }
+    },
+    {
+      "at": "2026-07-11T16:33:54Z",
+      "action": "follow_up_open",
+      "details": {
+        "id": "follow-up-1aacdba7a168",
+        "round": 1,
+        "gate": "imm-code-review"
+      }
+    },
+    {
+      "at": "2026-07-11T16:35:50Z",
+      "action": "review_follow_up",
+      "details": {
+        "id": "follow-up-1aacdba7a168",
+        "round": 1,
+        "decision": "pass"
+      }
+    },
+    {
+      "at": "2026-07-11T16:37:40Z",
+      "action": "review_gate_pass",
+      "details": {
+        "gate": "imm-code-review",
+        "reviewed_changed_files": [
+          "apps/web/public/_worker.js",
+          "apps/web/src/api/types.ts",
+          "apps/web/src/pages/AdminDashboard.tsx",
+          "apps/web/src/pages/StatusPage.tsx",
+          "apps/worker/migrations/0016_status_page_branding_ownership.sql",
+          "apps/worker/src/public/data.ts",
+          "apps/worker/src/public/homepage.ts",
+          "apps/worker/src/public/status-page.ts",
+          "apps/worker/src/public/status-refresh.ts",
+          "apps/worker/src/public/status.ts",
+          "apps/worker/src/routes/admin.ts",
+          "apps/worker/src/schemas/settings.ts",
+          "apps/worker/src/settings.ts",
+          "apps/worker/test/admin-settings-homepage-refresh.test.ts",
+          "apps/worker/test/internal-status-page-refresh.test.ts",
+          "apps/worker/test/public-fast-path-guards.test.ts",
+          "apps/worker/test/public-homepage-compute.test.ts",
+          "apps/worker/test/public-status-pages.test.ts",
+          "apps/worker/test/public-status.test.ts",
+          "apps/worker/test/settings-read-write.test.ts",
+          "apps/worker/test/settings-schema.test.ts",
+          "apps/worker/test/status-page-branding-migration.test.ts"
+        ],
+        "evidence_ref": "22 files reviewed: migration, settings, schemas, public payloads, guards, admin UI, status page UI, pages worker, 9 test files"
+      }
+    },
+    {
+      "at": "2026-07-11T16:38:35Z",
+      "action": "review_gate_pass",
+      "details": {
+        "gate": "imm-ui-review",
+        "reviewed_changed_files": [
+          "apps/web/public/_worker.js",
+          "apps/web/src/api/types.ts",
+          "apps/web/src/pages/AdminDashboard.tsx",
+          "apps/web/src/pages/StatusPage.tsx",
+          "apps/worker/migrations/0016_status_page_branding_ownership.sql",
+          "apps/worker/src/public/data.ts",
+          "apps/worker/src/public/homepage.ts",
+          "apps/worker/src/public/status-page.ts",
+          "apps/worker/src/public/status-refresh.ts",
+          "apps/worker/src/public/status.ts",
+          "apps/worker/src/routes/admin.ts",
+          "apps/worker/src/schemas/settings.ts",
+          "apps/worker/src/settings.ts",
+          "apps/worker/test/admin-settings-homepage-refresh.test.ts",
+          "apps/worker/test/internal-status-page-refresh.test.ts",
+          "apps/worker/test/public-fast-path-guards.test.ts",
+          "apps/worker/test/public-homepage-compute.test.ts",
+          "apps/worker/test/public-status-pages.test.ts",
+          "apps/worker/test/public-status.test.ts",
+          "apps/worker/test/settings-read-write.test.ts",
+          "apps/worker/test/settings-schema.test.ts",
+          "apps/worker/test/status-page-branding-migration.test.ts"
+        ],
+        "evidence_ref": "StatusPage.tsx L370-380 (site_title from page data), AdminDashboard.tsx (no site_title/site_description settings UI), types.ts L129-130,196-197 (API types preserved for compatibility), settings.ts (no site_title/site_description), migration 0016 (correct DELETE), homepage.ts L52-53 (HomepagePublicSettings still typed with site_title/site_description for backward compat)"
+      }
+    },
+    {
+      "at": "2026-07-11T16:44:07Z",
+      "action": "finish_reset",
+      "details": {
+        "plan_path": "docs/plans/2026-07-11-status-page-branding-ownership-plan.md"
+      }
     }
   ],
   "requires_replan": false,
   "runtime_status": "idle",
-  "plan_path": "docs/plans/2026-07-10-multi-public-status-pages-plan.md",
-  "plan_summary": "Replace Uptimer's single implicit public status page with explicit status pages while preserving a default-page compatibility path and the released Free Plan snapshot CPU profile.",
-  "plan_signature": "231f0c88834b3839e0a52b3a9394b4aded7f7e5dcba019150b53a3b5848e1707",
-  "plan_last_validated_at": "2026-07-11T02:40:23Z",
+  "plan_path": "docs/plans/2026-07-11-status-page-branding-ownership-plan.md",
+  "plan_summary": "Remove conflicting global title/description ownership and make the resolved status page authoritative across public data, snapshots, metadata, and UI.",
+  "plan_signature": "11538e1d6fdd1bfd8eb79ec866078924cfead3c726686316c11016af81b2a503",
+  "plan_last_validated_at": "2026-07-11T14:10:45Z",
   "completed_steps": [
-    1,
-    2,
-    3,
-    4,
-    5,
-    6
+    1
   ],
   "active_step": null,
   "next_action": null,
@@ -1027,102 +653,108 @@
         "decision": "pass",
         "reviewed_changed_files": [
           "apps/web/public/_worker.js",
-          "apps/web/src/api/client.ts",
-          "apps/web/src/app/AuthContext.tsx",
-          "apps/web/src/app/StatusPageSlugContext.tsx",
-          "apps/web/src/app/router.tsx",
-          "apps/web/src/main.tsx",
-          "apps/web/src/pages/AdminLogin.tsx",
-          "apps/web/src/pages/IncidentHistoryPage.tsx",
-          "apps/web/src/pages/MaintenanceHistoryPage.tsx",
+          "apps/web/src/api/types.ts",
+          "apps/web/src/pages/AdminDashboard.tsx",
           "apps/web/src/pages/StatusPage.tsx",
-          "apps/worker/migrations/0014_status_pages.sql",
-          "apps/worker/migrations/0015_status_page_refresh_queue.sql",
-          "apps/worker/src/fetch-handler.ts",
-          "apps/worker/src/internal/status-page-refresh-core.ts",
+          "apps/worker/migrations/0016_status_page_branding_ownership.sql",
           "apps/worker/src/public/data.ts",
+          "apps/worker/src/public/homepage.ts",
           "apps/worker/src/public/status-page.ts",
+          "apps/worker/src/public/status-refresh.ts",
           "apps/worker/src/public/status.ts",
-          "apps/worker/src/routes/admin-status-pages.ts",
           "apps/worker/src/routes/admin.ts",
-          "apps/worker/src/routes/public-ui-analytics.ts",
-          "apps/worker/src/routes/public.ts",
-          "apps/worker/src/scheduler/scheduled.ts",
-          "apps/worker/src/schemas/incidents.ts",
-          "apps/worker/src/schemas/maintenance-windows.ts",
-          "apps/worker/src/schemas/status-pages.ts",
-          "apps/worker/src/snapshots/public-page-keys.ts",
-          "apps/worker/src/snapshots/public-status-read.ts",
-          "apps/worker/src/snapshots/public-status.ts",
-          "apps/worker/src/snapshots/status-page-refresh-queue.ts",
-          "apps/worker/test/admin-incidents.test.ts",
-          "apps/worker/test/admin-maintenance-windows.test.ts",
-          "apps/worker/test/admin-status-pages.test.ts",
+          "apps/worker/src/schemas/settings.ts",
+          "apps/worker/src/settings.ts",
+          "apps/worker/test/admin-settings-homepage-refresh.test.ts",
           "apps/worker/test/internal-status-page-refresh.test.ts",
-          "apps/worker/test/public-page-keys.test.ts",
+          "apps/worker/test/public-fast-path-guards.test.ts",
+          "apps/worker/test/public-homepage-compute.test.ts",
           "apps/worker/test/public-status-pages.test.ts",
-          "apps/worker/test/status-page-refresh-queue.test.ts",
-          "apps/worker/test/status-pages-migration.test.ts",
-          "apps/worker/test/status-pages-schema.test.ts",
-          "docs/plans/2026-07-10-multi-public-status-pages-plan.md",
-          "packages/db/src/schema.ts"
+          "apps/worker/test/public-status.test.ts",
+          "apps/worker/test/settings-read-write.test.ts",
+          "apps/worker/test/settings-schema.test.ts",
+          "apps/worker/test/status-page-branding-migration.test.ts"
         ],
-        "changed_files_signature": "2ace6bfe26ca76b9534ef152e79a08340e8b6bc081ea99c6f332bd75677a2806",
-        "evidence_ref": "code-review-u6-2026-07-11",
+        "changed_files_signature": "3f38a90edc6955cd5146b9d2895775eee5faa5bf160ea381829fc3850df1715e",
+        "evidence_ref": "22 files reviewed: migration, settings, schemas, public payloads, guards, admin UI, status page UI, pages worker, 9 test files",
         "reviewer_skill": "imm-code-review",
-        "reviewed_at": "2026-07-11T09:25:58Z"
+        "reviewed_at": "2026-07-11T16:37:40Z"
       },
       "imm-ui-review": {
         "gate": "imm-ui-review",
         "decision": "pass",
         "reviewed_changed_files": [
           "apps/web/public/_worker.js",
-          "apps/web/src/api/client.ts",
-          "apps/web/src/app/AuthContext.tsx",
-          "apps/web/src/app/StatusPageSlugContext.tsx",
-          "apps/web/src/app/router.tsx",
-          "apps/web/src/main.tsx",
-          "apps/web/src/pages/AdminLogin.tsx",
-          "apps/web/src/pages/IncidentHistoryPage.tsx",
-          "apps/web/src/pages/MaintenanceHistoryPage.tsx",
+          "apps/web/src/api/types.ts",
+          "apps/web/src/pages/AdminDashboard.tsx",
           "apps/web/src/pages/StatusPage.tsx",
-          "apps/worker/migrations/0014_status_pages.sql",
-          "apps/worker/migrations/0015_status_page_refresh_queue.sql",
-          "apps/worker/src/fetch-handler.ts",
-          "apps/worker/src/internal/status-page-refresh-core.ts",
+          "apps/worker/migrations/0016_status_page_branding_ownership.sql",
           "apps/worker/src/public/data.ts",
+          "apps/worker/src/public/homepage.ts",
           "apps/worker/src/public/status-page.ts",
+          "apps/worker/src/public/status-refresh.ts",
           "apps/worker/src/public/status.ts",
-          "apps/worker/src/routes/admin-status-pages.ts",
           "apps/worker/src/routes/admin.ts",
-          "apps/worker/src/routes/public-ui-analytics.ts",
-          "apps/worker/src/routes/public.ts",
-          "apps/worker/src/scheduler/scheduled.ts",
-          "apps/worker/src/schemas/incidents.ts",
-          "apps/worker/src/schemas/maintenance-windows.ts",
-          "apps/worker/src/schemas/status-pages.ts",
-          "apps/worker/src/snapshots/public-page-keys.ts",
-          "apps/worker/src/snapshots/public-status-read.ts",
-          "apps/worker/src/snapshots/public-status.ts",
-          "apps/worker/src/snapshots/status-page-refresh-queue.ts",
-          "apps/worker/test/admin-incidents.test.ts",
-          "apps/worker/test/admin-maintenance-windows.test.ts",
-          "apps/worker/test/admin-status-pages.test.ts",
+          "apps/worker/src/schemas/settings.ts",
+          "apps/worker/src/settings.ts",
+          "apps/worker/test/admin-settings-homepage-refresh.test.ts",
           "apps/worker/test/internal-status-page-refresh.test.ts",
-          "apps/worker/test/public-page-keys.test.ts",
+          "apps/worker/test/public-fast-path-guards.test.ts",
+          "apps/worker/test/public-homepage-compute.test.ts",
           "apps/worker/test/public-status-pages.test.ts",
-          "apps/worker/test/status-page-refresh-queue.test.ts",
-          "apps/worker/test/status-pages-migration.test.ts",
-          "apps/worker/test/status-pages-schema.test.ts",
-          "docs/plans/2026-07-10-multi-public-status-pages-plan.md",
-          "packages/db/src/schema.ts"
+          "apps/worker/test/public-status.test.ts",
+          "apps/worker/test/settings-read-write.test.ts",
+          "apps/worker/test/settings-schema.test.ts",
+          "apps/worker/test/status-page-branding-migration.test.ts"
         ],
-        "changed_files_signature": "2ace6bfe26ca76b9534ef152e79a08340e8b6bc081ea99c6f332bd75677a2806",
-        "evidence_ref": "ui-review-u6-2026-07-11",
+        "changed_files_signature": "3f38a90edc6955cd5146b9d2895775eee5faa5bf160ea381829fc3850df1715e",
+        "evidence_ref": "StatusPage.tsx L370-380 (site_title from page data), AdminDashboard.tsx (no site_title/site_description settings UI), types.ts L129-130,196-197 (API types preserved for compatibility), settings.ts (no site_title/site_description), migration 0016 (correct DELETE), homepage.ts L52-53 (HomepagePublicSettings still typed with site_title/site_description for backward compat)",
         "reviewer_skill": "imm-ui-review",
-        "reviewed_at": "2026-07-11T09:29:50Z"
+        "reviewed_at": "2026-07-11T16:38:35Z"
       }
     }
   },
-  "reset_reason": "intentional_reset"
+  "reset_reason": "intentional_reset",
+  "follow_up_history": [
+    {
+      "id": "follow-up-1aacdba7a168",
+      "state": "closed",
+      "scope": [
+        "apps/worker/test/public-homepage-compute.test.ts",
+        "apps/worker/test/public-fast-path-guards.test.ts"
+      ],
+      "change_goal": "Remove legacy site_title/site_description rows from mock settings handlers and ensure test assertions use status page as branding source",
+      "verification_hint": "Run affected test files; ensure they still pass after removing legacy mock rows",
+      "origin_review": {
+        "gate": "imm-code-review",
+        "evidence_ref": "Migration + schema + 3 public modules + admin UI verified; test mocks need cleanup"
+      },
+      "execution_evidence": {
+        "changed_files": [
+          "apps/worker/test/public-homepage-compute.test.ts",
+          "apps/worker/test/public-fast-path-guards.test.ts"
+        ],
+        "verification_result": "pass: 2 files, 19/19 tests passed; git diff --check passed; focused rg confirms no legacy site_title/site_description setting rows remain",
+        "verification_command": "pnpm --filter @uptimer/worker exec vitest run --config vitest.config.ts test/public-homepage-compute.test.ts test/public-fast-path-guards.test.ts && git diff --check",
+        "notes": "Mock branding now comes from status_pages; homepage assertions explicitly verify page-local title and description. Scope limited to the two follow-up test files; no production changes or abstractions.",
+        "recorded_at": "2026-07-11T16:34:50Z"
+      },
+      "opened_at": "2026-07-11T16:33:54Z",
+      "round": 1,
+      "qa_decision": {
+        "decision": "pass",
+        "evidence": "19/19 tests passed; git diff --check clean; rg confirms no legacy site_title/site_description rows in scope",
+        "artifacts": "",
+        "notes": "",
+        "recorded_at": "2026-07-11T16:35:50Z"
+      },
+      "closed_at": "2026-07-11T16:35:50Z"
+    }
+  ],
+  "last_follow_up_completion": {
+    "id": "follow-up-1aacdba7a168",
+    "round": 1,
+    "completed_at": "2026-07-11T16:35:50Z",
+    "reported_at": "2026-07-11T16:35:50Z"
+  }
 }

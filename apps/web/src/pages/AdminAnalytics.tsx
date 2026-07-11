@@ -124,12 +124,11 @@ export function AdminAnalytics() {
 
   const settings = settingsQuery.data?.settings;
   useApplyServerLocaleSetting(settings?.site_locale);
-  const siteTitle = settings?.site_title?.trim() || 'Uptimer';
   const timeZone = settings?.site_timezone || 'UTC';
 
   useEffect(() => {
-    document.title = `${siteTitle} · ${t('admin_analytics.analytics_title')}`;
-  }, [siteTitle, t]);
+    document.title = `Uptimer · ${t('admin_analytics.analytics_title')}`;
+  }, [t]);
 
   useEffect(() => {
     if (!settings) return;
@@ -184,9 +183,7 @@ export function AdminAnalytics() {
       <header className="bg-white dark:bg-slate-800 shadow-sm dark:shadow-none dark:border-b dark:border-slate-700">
         <div className="mx-auto max-w-[92rem] px-4 py-3 sm:px-6 sm:py-4 lg:px-8 flex justify-between items-center">
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-slate-100">
-            {settings?.site_title
-              ? `${settings.site_title} · ${t('admin_analytics.analytics_title')}`
-              : t('admin_analytics.analytics_title')}
+            {t('admin_analytics.analytics_title')}
           </h1>
 
           <div className="flex items-center gap-1">

@@ -440,6 +440,7 @@ export function StatusPage() {
       ? {
           ...selectedIncidentRequest.incident,
           monitor_ids: [],
+          status_page_ids: [],
           updates: [],
         }
       : null);

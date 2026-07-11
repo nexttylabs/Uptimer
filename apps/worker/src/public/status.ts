@@ -10,6 +10,10 @@ import {
   maintenanceWindowRowToApi,
   readPublicSiteSettings,
 } from './data';
+import {
+  resolveDefaultPublicStatusPage,
+  resolvePublicStatusPageById,
+} from './status-page';
 
 export async function computePublicStatusPayload(
   db: D1Database,
@@ -17,6 +21,10 @@ export async function computePublicStatusPayload(
   opts: { includeHiddenMonitors?: boolean; statusPageId?: number } = {},
 ): Promise<PublicStatusResponse> {
   const includeHiddenMonitors = opts.includeHiddenMonitors ?? false;
+  const page =
+    opts.statusPageId === undefined
+      ? await resolveDefaultPublicStatusPage(db)
+      : await resolvePublicStatusPageById(db, opts.statusPageId);
   const statusPageId = opts.statusPageId;
 
   const [monitorData, activeIncidentSummary, maintenanceWindows, settings] = await Promise.all([
@@ -37,8 +45,8 @@ export async function computePublicStatusPayload(
 
   return {
     generated_at: now,
-    site_title: settings.site_title,
-    site_description: settings.site_description,
+    site_title: page.title,
+    site_description: page.description,
     site_locale: settings.site_locale,
     site_timezone: settings.site_timezone,
     uptime_rating_level: monitorData.uptimeRatingLevel,

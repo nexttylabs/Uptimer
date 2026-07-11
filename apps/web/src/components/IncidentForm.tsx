@@ -3,6 +3,7 @@ import type { CreateIncidentInput, IncidentImpact, IncidentStatus } from '../api
 import { useI18n } from '../app/I18nContext';
 import { incidentImpactLabel, incidentStatusLabel } from '../i18n/labels';
 import { Markdown } from './Markdown';
+import { StatusPageSelector } from './StatusPageSelector';
 import { Button, FIELD_LABEL_CLASS, INPUT_CLASS, SELECT_CLASS, TEXTAREA_CLASS } from './ui';
 
 const impactOptions: IncidentImpact[] = ['none', 'minor', 'major', 'critical'];
@@ -19,11 +20,13 @@ const labelClass = FIELD_LABEL_CLASS;
 
 export function IncidentForm({
   monitors,
+  statusPages,
   onSubmit,
   onCancel,
   isLoading,
 }: {
   monitors: Array<{ id: number; name: string }>;
+  statusPages: Array<{ id: number; name: string; slug: string }>;
   onSubmit: (input: CreateIncidentInput) => void;
   onCancel: () => void;
   isLoading?: boolean;
@@ -33,6 +36,7 @@ export function IncidentForm({
   const [status, setStatus] = useState<Exclude<IncidentStatus, 'resolved'>>('investigating');
   const [message, setMessage] = useState('');
   const [selectedMonitorIds, setSelectedMonitorIds] = useState<number[]>([]);
+  const [selectedStatusPageIds, setSelectedStatusPageIds] = useState<number[]>([]);
   const { t } = useI18n();
 
   const normalized = useMemo(() => message.trim(), [message]);
@@ -42,12 +46,13 @@ export function IncidentForm({
       className="space-y-5"
       onSubmit={(e) => {
         e.preventDefault();
-        if (selectedMonitorIds.length === 0) return;
+        if (selectedMonitorIds.length === 0 || selectedStatusPageIds.length === 0) return;
         const base: CreateIncidentInput = {
           title: title.trim(),
           impact,
           status,
           monitor_ids: selectedMonitorIds,
+          status_page_ids: selectedStatusPageIds,
         };
         onSubmit(normalized.length > 0 ? { ...base, message: normalized } : base);
       }}
@@ -88,6 +93,17 @@ export function IncidentForm({
           </div>
         )}
       </div>
+
+      <StatusPageSelector
+        statusPages={statusPages}
+        selectedIds={selectedStatusPageIds}
+        onChange={setSelectedStatusPageIds}
+      />
+      {selectedStatusPageIds.length === 0 && (
+        <div className="text-sm text-red-500 dark:text-red-400">
+          {t('incident_form.select_at_least_one_page')}
+        </div>
+      )}
 
       <div>
         <label className={labelClass}>{t('common.title_label')}</label>
@@ -157,7 +173,7 @@ export function IncidentForm({
         </Button>
         <Button
           type="submit"
-          disabled={isLoading || !title.trim() || selectedMonitorIds.length === 0}
+          disabled={isLoading || !title.trim() || selectedMonitorIds.length === 0 || selectedStatusPageIds.length === 0}
           className="flex-1"
         >
           {isLoading ? t('common.saving') : t('common.create')}

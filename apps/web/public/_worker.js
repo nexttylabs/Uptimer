@@ -806,11 +806,16 @@ async function fetchIndexHtml(env, url) {
   return env.ASSETS.fetch(req);
 }
 
-async function fetchPublicHomepageArtifact(env, trace, now) {
+async function fetchPublicHomepageArtifact(env, trace, now, slug = null) {
   const apiOrigin = resolveApiOrigin(env);
   if (!apiOrigin) return null;
 
-  const statusUrl = new URL('/api/v1/public/homepage-artifact', apiOrigin);
+  const statusUrl = new URL(
+    slug
+      ? `/api/v1/public/status-pages/${encodeURIComponent(slug)}/status`
+      : '/api/v1/public/homepage-artifact',
+    apiOrigin,
+  );
 
   // Keep HTML fast: if the API is slow, fall back to a static HTML shell.
   const controller = new AbortController();
@@ -844,6 +849,16 @@ async function fetchPublicHomepageArtifact(env, trace, now) {
     const data = trace
       ? await trace.timeAsync('api_json', () => resp.json())
       : await resp.json();
+    if (slug) {
+      if (!data || typeof data !== 'object') return null;
+      return {
+        generated_at: normalizeHomepageGeneratedAt(data.generated_at, now),
+        preload_html: '',
+        meta_title: typeof data.site_title === 'string' ? data.site_title : '',
+        meta_description: typeof data.site_description === 'string' ? data.site_description : '',
+        snapshot_inline_json: null,
+      };
+    }
     return normalizeHomepageArtifactPayload(data, now);
   } catch {
     return null;
@@ -1098,7 +1113,7 @@ export default {
           ? await trace.timeAsync('index_text', () => base.text())
           : await base.text();
 
-        const artifact = slug ? null : await fetchPublicHomepageArtifact(env, trace, now);
+        const artifact = await fetchPublicHomepageArtifact(env, trace, now, slug);
         if (!artifact) {
           if (cached) {
             const cachedGeneratedAt = readGeneratedAtHeader(cached);
@@ -1145,33 +1160,37 @@ export default {
 
         const snapshotInlineJson = artifact.snapshot_inline_json;
 
-        let injected = trace
-          ? trace.time('inject_root', () =>
-              html.replace(
+        let injected = artifact.preload_html
+          ? trace
+            ? trace.time('inject_root', () =>
+                html.replace(
+                  '<div id="root"></div>',
+                  `${artifact.preload_html}<div id="root"></div>`,
+                ),
+              )
+            : html.replace(
                 '<div id="root"></div>',
                 `${artifact.preload_html}<div id="root"></div>`,
-              ),
-            )
-          : html.replace(
-              '<div id="root"></div>',
-              `${artifact.preload_html}<div id="root"></div>`,
-            );
+              )
+          : html;
 
         injected = trace
           ? trace.time('inject_meta', () => injectStatusMetaTags(injected, artifact, url))
           : injectStatusMetaTags(injected, artifact, url);
 
-        injected = trace
-          ? trace.time('inject_bootstrap', () =>
-              injected.replace(
+        if (snapshotInlineJson) {
+          injected = trace
+            ? trace.time('inject_bootstrap', () =>
+                injected.replace(
+                  '</head>',
+                  `  ${HOMEPAGE_PRELOAD_STYLE_TAG}\n  <script>globalThis.__UPTIMER_INITIAL_HOMEPAGE__=${snapshotInlineJson};</script>\n</head>`,
+                ),
+              )
+            : injected.replace(
                 '</head>',
                 `  ${HOMEPAGE_PRELOAD_STYLE_TAG}\n  <script>globalThis.__UPTIMER_INITIAL_HOMEPAGE__=${snapshotInlineJson};</script>\n</head>`,
-              ),
-            )
-          : injected.replace(
-              '</head>',
-              `  ${HOMEPAGE_PRELOAD_STYLE_TAG}\n  <script>globalThis.__UPTIMER_INITIAL_HOMEPAGE__=${snapshotInlineJson};</script>\n</head>`,
-            );
+              );
+        }
 
         const headers = sanitizeHtmlResponseHeaders(base.headers);
         headers.set('Content-Type', 'text/html; charset=utf-8');

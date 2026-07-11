@@ -35,8 +35,6 @@ function PageFallback() {
   return <div className="min-h-screen bg-slate-50 dark:bg-slate-900" />;
 }
 
-const SLUG_PATTERN = '[a-z0-9]+(?:-[a-z0-9]+)*';
-
 function StatusPageRoute() {
   const { slug } = useParams<{ slug: string }>();
   const normalizedSlug: StatusPageSlug = slug ?? undefined;
@@ -59,9 +57,9 @@ function SlugScopedRoute({ children }: { children: React.ReactNode }) {
 
 export const router = createBrowserRouter([
   { path: '/', element: <StatusPageRoute /> },
-  { path: `/status/:slug(${SLUG_PATTERN})`, element: <StatusPageRoute /> },
+  { path: '/status/:slug', element: <StatusPageRoute /> },
   {
-    path: `/status/:slug(${SLUG_PATTERN})/history/incidents`,
+    path: '/status/:slug/history/incidents',
     element: (
       <SlugScopedRoute>
         <Suspense fallback={<PageFallback />}>
@@ -71,7 +69,7 @@ export const router = createBrowserRouter([
     ),
   },
   {
-    path: `/status/:slug(${SLUG_PATTERN})/history/maintenance`,
+    path: '/status/:slug/history/maintenance',
     element: (
       <SlugScopedRoute>
         <Suspense fallback={<PageFallback />}>

@@ -32,7 +32,10 @@ const STATUS_FAST_PATCH_MAX_STALE_SECONDS = 10 * 60;
 const UPTIME_DAYS = 60;
 
 type StatusMonitor = PublicStatusResponse['monitors'][number];
-type StatusPublicSettings = SettingsResponse['settings'];
+type StatusPublicSettings = SettingsResponse['settings'] & {
+  site_title: string;
+  site_description: string;
+};
 type StatusMonitorMetadataStamp = {
   monitorCountTotal: number;
   maxUpdatedAt: number | null;
@@ -635,14 +638,14 @@ async function readStatusScheduledFastGuardState(
         `
           SELECT
             (
-              SELECT value
-              FROM settings
-              WHERE key = 'site_title'
+              SELECT title
+              FROM status_pages
+              WHERE slug = 'default' AND is_public = 1
             ) AS site_title_value,
             (
-              SELECT value
-              FROM settings
-              WHERE key = 'site_description'
+              SELECT description
+              FROM status_pages
+              WHERE slug = 'default' AND is_public = 1
             ) AS site_description_value,
             (
               SELECT value

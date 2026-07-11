@@ -36,6 +36,24 @@ export async function resolveDefaultPublicStatusPage(db: D1Database): Promise<Pu
   return await resolvePublicStatusPage(db, 'default');
 }
 
+export async function resolvePublicStatusPageById(
+  db: D1Database,
+  id: number,
+): Promise<PublicStatusPage> {
+  const page = await db
+    .prepare(
+      `
+        SELECT id, slug, name, title, description
+        FROM status_pages
+        WHERE id = ?1 AND is_public = 1
+      `,
+    )
+    .bind(id)
+    .first<PublicStatusPage>();
+  if (!page) throw new AppError(404, 'NOT_FOUND', 'Status page not found');
+  return page;
+}
+
 export async function resolveOptionalPublicStatusPage(
   db: D1Database,
   slug: string | undefined,

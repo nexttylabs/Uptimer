@@ -1242,6 +1242,7 @@ function incidentRowToApi(
   row: IncidentRow,
   updates: IncidentUpdateRow[] = [],
   monitorIds: number[] = [],
+  statusPageIds: number[] = [],
 ) {
   return {
     id: row.id,
@@ -1252,6 +1253,7 @@ function incidentRowToApi(
     started_at: row.started_at,
     resolved_at: row.resolved_at,
     monitor_ids: monitorIds,
+    status_page_ids: statusPageIds,
     updates: updates.map(incidentUpdateRowToApi),
   };
 }
@@ -1311,6 +1313,34 @@ async function listIncidentMonitorIdsByIncidentId(
   return byIncident;
 }
 
+async function listIncidentStatusPageIdsByIncidentId(
+  db: D1Database,
+  incidentIds: number[],
+): Promise<Map<number, number[]>> {
+  const byIncident = new Map<number, number[]>();
+  if (incidentIds.length === 0) return byIncident;
+
+  const placeholders = incidentIds.map((_, idx) => `?${idx + 1}`).join(', ');
+  const sql = `
+    SELECT incident_id, status_page_id
+    FROM status_page_incidents
+    WHERE incident_id IN (${placeholders})
+    ORDER BY incident_id, status_page_id
+  `;
+
+  const { results } = await db
+    .prepare(sql)
+    .bind(...incidentIds)
+    .all<{ incident_id: number; status_page_id: number }>();
+  for (const r of results ?? []) {
+    const existing = byIncident.get(r.incident_id) ?? [];
+    existing.push(r.status_page_id);
+    byIncident.set(r.incident_id, existing);
+  }
+
+  return byIncident;
+}
+
 type MaintenanceWindowRow = {
   id: number;
   title: string;
@@ -1325,7 +1355,11 @@ type MaintenanceWindowMonitorLinkRow = {
   monitor_id: number;
 };
 
-function maintenanceWindowRowToApi(row: MaintenanceWindowRow, monitorIds: number[] = []) {
+function maintenanceWindowRowToApi(
+  row: MaintenanceWindowRow,
+  monitorIds: number[] = [],
+  statusPageIds: number[] = [],
+) {
   return {
     id: row.id,
     title: row.title,
@@ -1334,6 +1368,7 @@ function maintenanceWindowRowToApi(row: MaintenanceWindowRow, monitorIds: number
     ends_at: row.ends_at,
     created_at: row.created_at,
     monitor_ids: monitorIds,
+    status_page_ids: statusPageIds,
   };
 }
 
@@ -1359,6 +1394,34 @@ async function listMaintenanceWindowMonitorIdsByWindowId(
   for (const r of results ?? []) {
     const existing = byWindow.get(r.maintenance_window_id) ?? [];
     existing.push(r.monitor_id);
+    byWindow.set(r.maintenance_window_id, existing);
+  }
+
+  return byWindow;
+}
+
+async function listMaintenanceStatusPageIdsByWindowId(
+  db: D1Database,
+  windowIds: number[],
+): Promise<Map<number, number[]>> {
+  const byWindow = new Map<number, number[]>();
+  if (windowIds.length === 0) return byWindow;
+
+  const placeholders = windowIds.map((_, idx) => `?${idx + 1}`).join(', ');
+  const sql = `
+    SELECT maintenance_window_id, status_page_id
+    FROM status_page_maintenance_windows
+    WHERE maintenance_window_id IN (${placeholders})
+    ORDER BY maintenance_window_id, status_page_id
+  `;
+
+  const { results } = await db
+    .prepare(sql)
+    .bind(...windowIds)
+    .all<{ maintenance_window_id: number; status_page_id: number }>();
+  for (const r of results ?? []) {
+    const existing = byWindow.get(r.maintenance_window_id) ?? [];
+    existing.push(r.status_page_id);
     byWindow.set(r.maintenance_window_id, existing);
   }
 
@@ -1458,6 +1521,10 @@ adminRoutes.get('/incidents', async (c) => {
     c.env.DB,
     incidentsList.map((r) => r.id),
   );
+  const statusPageIdsByIncidentId = await listIncidentStatusPageIdsByIncidentId(
+    c.env.DB,
+    incidentsList.map((r) => r.id),
+  );
   const updatesByIncidentId = await listIncidentUpdatesByIncidentId(
     c.env.DB,
     incidentsList.map((r) => r.id),
@@ -1469,6 +1536,7 @@ adminRoutes.get('/incidents', async (c) => {
         r,
         updatesByIncidentId.get(r.id) ?? [],
         monitorIdsByIncidentId.get(r.id) ?? [],
+        statusPageIdsByIncidentId.get(r.id) ?? [],
       ),
     ),
   });
@@ -1536,7 +1604,7 @@ adminRoutes.post('/incidents', async (c) => {
         event: 'incident.created',
         event_id: eventKey,
         timestamp: now,
-        incident: incidentRowToApi(row, [], monitorIds),
+        incident: incidentRowToApi(row, [], monitorIds, statusPageIds),
       };
 
       await dispatchWebhookToChannels({
@@ -1555,7 +1623,7 @@ adminRoutes.post('/incidents', async (c) => {
   await bumpHomepageIncidentGuardVersion(c.env.DB);
   queuePublicHomepageSnapshotRefresh(c);
 
-  return c.json({ incident: incidentRowToApi(row, [], monitorIds) }, 201);
+  return c.json({ incident: incidentRowToApi(row, [], monitorIds, statusPageIds) }, 201);
 });
 
 adminRoutes.post('/incidents/:id/updates', async (c) => {
@@ -1586,6 +1654,8 @@ adminRoutes.post('/incidents/:id/updates', async (c) => {
   const now = Math.floor(Date.now() / 1000);
   const monitorIdsByIncidentId = await listIncidentMonitorIdsByIncidentId(c.env.DB, [id]);
   const monitorIds = monitorIdsByIncidentId.get(id) ?? [];
+  const statusPageIdsByIncidentId = await listIncidentStatusPageIdsByIncidentId(c.env.DB, [id]);
+  const statusPageIds = statusPageIdsByIncidentId.get(id) ?? [];
 
   const updateRow = await c.env.DB.prepare(
     `
@@ -1637,7 +1707,7 @@ adminRoutes.post('/incidents/:id/updates', async (c) => {
         event: 'incident.updated',
         event_id: eventKey,
         timestamp: now,
-        incident: incidentRowToApi(incidentRow, [], monitorIds),
+        incident: incidentRowToApi(incidentRow, [], monitorIds, statusPageIds),
         update: incidentUpdateRowToApi(updateRow),
       };
 
@@ -1658,7 +1728,7 @@ adminRoutes.post('/incidents/:id/updates', async (c) => {
   queuePublicHomepageSnapshotRefresh(c);
 
   return c.json({
-    incident: incidentRowToApi(incidentRow, [], monitorIds),
+    incident: incidentRowToApi(incidentRow, [], monitorIds, statusPageIds),
     update: incidentUpdateRowToApi(updateRow),
   });
 });
@@ -1687,13 +1757,17 @@ adminRoutes.patch('/incidents/:id/resolve', async (c) => {
   if (existing.status === 'resolved') {
     const monitorIdsByIncidentId = await listIncidentMonitorIdsByIncidentId(c.env.DB, [id]);
     const monitorIds = monitorIdsByIncidentId.get(id) ?? [];
+    const statusPageIdsByIncidentId = await listIncidentStatusPageIdsByIncidentId(c.env.DB, [id]);
+    const statusPageIds = statusPageIdsByIncidentId.get(id) ?? [];
 
-    return c.json({ incident: incidentRowToApi(existing, [], monitorIds) });
+    return c.json({ incident: incidentRowToApi(existing, [], monitorIds, statusPageIds) });
   }
 
   const now = Math.floor(Date.now() / 1000);
   const monitorIdsByIncidentId = await listIncidentMonitorIdsByIncidentId(c.env.DB, [id]);
   const monitorIds = monitorIdsByIncidentId.get(id) ?? [];
+  const statusPageIdsByIncidentId = await listIncidentStatusPageIdsByIncidentId(c.env.DB, [id]);
+  const statusPageIds = statusPageIdsByIncidentId.get(id) ?? [];
 
   await c.env.DB.prepare(
     `
@@ -1744,7 +1818,7 @@ adminRoutes.patch('/incidents/:id/resolve', async (c) => {
         event: 'incident.resolved',
         event_id: eventKey,
         timestamp: now,
-        incident: incidentRowToApi(incidentRow, [], monitorIds),
+        incident: incidentRowToApi(incidentRow, [], monitorIds, statusPageIds),
         update: incidentUpdateRowToApi(updateRow),
       };
 
@@ -1766,7 +1840,7 @@ adminRoutes.patch('/incidents/:id/resolve', async (c) => {
   queuePublicHomepageSnapshotRefresh(c);
 
   return c.json({
-    incident: incidentRowToApi(incidentRow, [], monitorIds),
+    incident: incidentRowToApi(incidentRow, [], monitorIds, statusPageIds),
     update: incidentUpdateRowToApi(updateRow),
   });
 });
@@ -1843,10 +1917,18 @@ adminRoutes.get('/maintenance-windows', async (c) => {
     c.env.DB,
     windows.map((w) => w.id),
   );
+  const statusPageIdsByWindowId = await listMaintenanceStatusPageIdsByWindowId(
+    c.env.DB,
+    windows.map((w) => w.id),
+  );
 
   return c.json({
     maintenance_windows: windows.map((w) =>
-      maintenanceWindowRowToApi(w, monitorIdsByWindowId.get(w.id) ?? []),
+      maintenanceWindowRowToApi(
+        w,
+        monitorIdsByWindowId.get(w.id) ?? [],
+        statusPageIdsByWindowId.get(w.id) ?? [],
+      ),
     ),
   });
 });
@@ -1901,7 +1983,7 @@ adminRoutes.post('/maintenance-windows', async (c) => {
   await bumpHomepageMaintenanceGuardVersion(c.env.DB);
   queuePublicHomepageSnapshotRefresh(c);
 
-  return c.json({ maintenance_window: maintenanceWindowRowToApi(row, monitorIds) }, 201);
+  return c.json({ maintenance_window: maintenanceWindowRowToApi(row, monitorIds, statusPageIds) }, 201);
 });
 
 adminRoutes.patch('/maintenance-windows/:id', async (c) => {
@@ -2000,11 +2082,13 @@ adminRoutes.patch('/maintenance-windows/:id', async (c) => {
 
   const monitorIdsByWindowId = await listMaintenanceWindowMonitorIdsByWindowId(c.env.DB, [id]);
   const monitorIds = monitorIdsByWindowId.get(id) ?? [];
+  const statusPageIdsByWindowId = await listMaintenanceStatusPageIdsByWindowId(c.env.DB, [id]);
+  const statusPageIds = statusPageIdsByWindowId.get(id) ?? [];
   await bumpHomepageMaintenanceGuardVersion(c.env.DB);
   await enqueueRefreshesForMaintenanceWindow(c.env.DB, id, Math.floor(Date.now() / 1000), 'maintenance-updated');
   queuePublicHomepageSnapshotRefresh(c);
 
-  return c.json({ maintenance_window: maintenanceWindowRowToApi(updated, monitorIds) });
+  return c.json({ maintenance_window: maintenanceWindowRowToApi(updated, monitorIds, statusPageIds) });
 });
 
 adminRoutes.delete('/maintenance-windows/:id', async (c) => {

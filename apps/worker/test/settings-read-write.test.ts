@@ -13,8 +13,6 @@ describe('settings read/write helpers', () => {
     ]);
 
     await expect(readSettings(db)).resolves.toEqual({
-      site_title: 'Uptimer',
-      site_description: '',
       site_locale: 'auto',
       site_timezone: 'UTC',
       retention_check_results_days: 7,
@@ -31,8 +29,8 @@ describe('settings read/write helpers', () => {
       {
         match: 'select key, value from settings',
         all: () => [
-          { key: 'site_title', value: 'Status Hub' },
-          { key: 'site_description', value: '' },
+          { key: 'site_title', value: 'Ignored legacy title' },
+          { key: 'site_description', value: 'Ignored legacy description' },
           { key: 'site_locale', value: 'ja' },
           { key: 'site_timezone', value: 'Asia/Tokyo' },
           { key: 'retention_check_results_days', value: '30' },
@@ -46,8 +44,6 @@ describe('settings read/write helpers', () => {
     ]);
 
     await expect(readSettings(db)).resolves.toEqual({
-      site_title: 'Status Hub',
-      site_description: '',
       site_locale: 'ja',
       site_timezone: 'Asia/Tokyo',
       retention_check_results_days: 30,
@@ -73,13 +69,11 @@ describe('settings read/write helpers', () => {
     ]);
 
     await patchSettings(db, {
-      site_title: 'Prod Status',
       retention_check_results_days: 14,
       uptime_rating_level: 5,
     });
 
     expect(written).toEqual([
-      ['site_title', 'Prod Status'],
       ['retention_check_results_days', '14'],
       ['uptime_rating_level', '5'],
     ]);

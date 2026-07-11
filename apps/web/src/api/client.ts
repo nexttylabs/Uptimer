@@ -11,6 +11,7 @@ import type {
   CreateIncidentUpdateInput,
   CreateNotificationChannelInput,
   CreateMaintenanceWindowInput,
+  CreateStatusPageInput,
   LatencyResponse,
   MaintenanceWindow,
   MonitorTestResult,
@@ -21,6 +22,7 @@ import type {
   PatchMaintenanceWindowInput,
   PatchMonitorInput,
   PatchNotificationChannelInput,
+  PatchStatusPageInput,
   PublicUptimeOverviewResponse,
   PublicIncidentsResponse,
   PublicMaintenanceWindowsResponse,
@@ -30,6 +32,8 @@ import type {
   ReorderMonitorGroupsInput,
   ReorderMonitorGroupsResult,
   ResolveIncidentInput,
+  StatusPage,
+  StatusPagesResponse,
   StatusResponse,
   MonitorAnalyticsResponse,
   MonitorOutagesResponse,
@@ -766,4 +770,45 @@ export async function updateAdminUptimeRating(
     body: JSON.stringify({ uptime_rating_level }),
   });
   return handleResponse<{ uptime_rating_level: 1 | 2 | 3 | 4 | 5 }>(res);
+}
+
+// Admin API - Status Pages
+export async function fetchAdminStatusPages(
+  limit = 50,
+): Promise<StatusPagesResponse> {
+  const res = await fetch(`${API_BASE}/admin/status-pages?limit=${limit}`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<StatusPagesResponse>(res);
+}
+
+export async function createStatusPage(
+  input: CreateStatusPageInput,
+): Promise<{ status_page: StatusPage }> {
+  const res = await fetch(`${API_BASE}/admin/status-pages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    body: JSON.stringify(input),
+  });
+  return handleResponse<{ status_page: StatusPage }>(res);
+}
+
+export async function updateStatusPage(
+  id: number,
+  input: PatchStatusPageInput,
+): Promise<{ status_page: StatusPage }> {
+  const res = await fetch(`${API_BASE}/admin/status-pages/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    body: JSON.stringify(input),
+  });
+  return handleResponse<{ status_page: StatusPage }>(res);
+}
+
+export async function deleteStatusPage(id: number): Promise<{ deleted: boolean }> {
+  const res = await fetch(`${API_BASE}/admin/status-pages/${id}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  return handleResponse<{ deleted: boolean }>(res);
 }

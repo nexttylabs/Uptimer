@@ -60,6 +60,28 @@ describe('public data consistency', () => {
     expect([...result.activeMonitorIds].sort((a, b) => a - b)).toEqual([11, 12, 13, 14]);
   });
 
+  it('qualifies maintenance columns when status-page joins add duplicate column names', async () => {
+    const seen: string[] = [];
+    const db = createFakeD1Database([
+      {
+        match: (sql) => sql.includes('join status_page_maintenance_windows'),
+        all: (_args, sql) => {
+          seen.push(sql);
+          return [];
+        },
+      },
+    ]);
+
+    const result = await listVisibleMaintenanceWindows(db, 100, false, 4);
+
+    expect(result).toMatchObject({ active: [], upcoming: [] });
+    expect(seen).toHaveLength(2);
+    for (const sql of seen) {
+      expect(sql).toContain('maintenance_windows.created_at');
+      expect(sql).toContain('maintenance_windows.id');
+    }
+  });
+
   it('aligns the banner incident with the maximum incident impact', () => {
     const banner = buildPublicStatusBanner({
       counts: {

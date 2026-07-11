@@ -338,8 +338,8 @@ describe('public fast-path guards', () => {
     const handlers: FakeD1QueryHandler[] = [
       {
         match: (sql) =>
-          sql.includes('select value') &&
-          sql.includes("where key = 'site_title'") &&
+          sql.includes('from status_pages') &&
+          sql.includes("where slug = 'default'") &&
           sql.includes('has_active_incidents'),
         first: () => ({
           site_title_value: baseSnapshot.site_title,

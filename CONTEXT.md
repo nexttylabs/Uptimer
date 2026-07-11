@@ -4,7 +4,9 @@ Shared project vocabulary and navigation pointers live here.
 
 ## Architecture Map
 
-- Domain Name: path/to/root, path/to/entry_file (Reason this area matters)
+- Public status-page identity and cache isolation: apps/worker/src/public/status-page.ts, apps/worker/src/snapshots/public-page-keys.ts, apps/worker/src/snapshots/status-page-refresh-queue.ts (Resolve page ownership and keep snapshots page-qualified.)
+- Public branding flow: apps/worker/src/public/homepage.ts, apps/worker/src/public/status-refresh.ts, apps/web/public/_worker.js, apps/web/src/pages/StatusPage.tsx (Carry resolved page title/description through snapshots, HTML metadata, and React.)
+- Reusable status-page isolation guidance: docs/solutions/multi-status-page-cache-isolation.md (Read before adding page-scoped public fields or custom-domain routing.)
 
 ## Language
 

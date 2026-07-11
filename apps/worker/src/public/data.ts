@@ -1352,17 +1352,23 @@ export async function listVisibleMaintenanceWindows(
   const maintenanceVisibilitySql = pageScoped
     ? 'spmw.status_page_id = ?3'
     : maintenanceWindowStatusPageVisibilityPredicate(includeHiddenMonitors);
+  const columns = pageScoped
+    ? 'maintenance_windows.id, maintenance_windows.title, maintenance_windows.message, maintenance_windows.starts_at, maintenance_windows.ends_at, maintenance_windows.created_at'
+    : 'id, title, message, starts_at, ends_at, created_at';
+  const startsAt = pageScoped ? 'maintenance_windows.starts_at' : 'starts_at';
+  const endsAt = pageScoped ? 'maintenance_windows.ends_at' : 'ends_at';
+  const id = pageScoped ? 'maintenance_windows.id' : 'id';
 
   const [{ results: activeResults }, { results: upcomingResults }] = await Promise.all([
     db
       .prepare(
         `
-      SELECT id, title, message, starts_at, ends_at, created_at
+      SELECT ${columns}
       FROM maintenance_windows
       ${pageScoped ? 'JOIN status_page_maintenance_windows spmw ON spmw.maintenance_window_id = maintenance_windows.id' : ''}
-      WHERE starts_at <= ?1 AND ends_at > ?1
+      WHERE ${startsAt} <= ?1 AND ${endsAt} > ?1
         AND ${maintenanceVisibilitySql}
-      ORDER BY starts_at ASC, id ASC
+      ORDER BY ${startsAt} ASC, ${id} ASC
       LIMIT ?2
     `,
       )
@@ -1371,12 +1377,12 @@ export async function listVisibleMaintenanceWindows(
     db
       .prepare(
         `
-      SELECT id, title, message, starts_at, ends_at, created_at
+      SELECT ${columns}
       FROM maintenance_windows
       ${pageScoped ? 'JOIN status_page_maintenance_windows spmw ON spmw.maintenance_window_id = maintenance_windows.id' : ''}
-      WHERE starts_at > ?1
+      WHERE ${startsAt} > ?1
         AND ${maintenanceVisibilitySql}
-      ORDER BY starts_at ASC, id ASC
+      ORDER BY ${startsAt} ASC, ${id} ASC
       LIMIT ?2
     `,
       )

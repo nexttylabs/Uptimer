@@ -6,6 +6,7 @@ import type {
 } from '../api/types';
 import { useI18n } from '../app/I18nContext';
 import { Markdown } from './Markdown';
+import { StatusPageSelector } from './StatusPageSelector';
 import { Button, FIELD_LABEL_CLASS, INPUT_CLASS, TEXTAREA_CLASS } from './ui';
 
 function pad2(n: number): string {
@@ -33,6 +34,7 @@ type CommonProps = {
   onCancel: () => void;
   isLoading?: boolean;
   monitors: Array<{ id: number; name: string }>;
+  statusPages: Array<{ id: number; name: string; slug: string }>;
 };
 type CreateProps = CommonProps & {
   window?: undefined;
@@ -44,7 +46,7 @@ type EditProps = CommonProps & {
 };
 
 export function MaintenanceWindowForm(props: CreateProps | EditProps) {
-  const { window, onCancel, isLoading, monitors } = props;
+  const { window, onCancel, isLoading, monitors, statusPages } = props;
   const { t } = useI18n();
 
   const [title, setTitle] = useState(window?.title ?? '');
@@ -52,6 +54,9 @@ export function MaintenanceWindowForm(props: CreateProps | EditProps) {
   const [startsAt, setStartsAt] = useState(window ? toDatetimeLocal(window.starts_at) : '');
   const [endsAt, setEndsAt] = useState(window ? toDatetimeLocal(window.ends_at) : '');
   const [selectedMonitorIds, setSelectedMonitorIds] = useState<number[]>(window?.monitor_ids ?? []);
+  const [selectedStatusPageIds, setSelectedStatusPageIds] = useState<number[]>(
+    window?.status_page_ids ?? [],
+  );
 
   const normalized = useMemo(() => message.trim(), [message]);
   const parsed = useMemo(
@@ -71,6 +76,12 @@ export function MaintenanceWindowForm(props: CreateProps | EditProps) {
       : selectedMonitorIds.length === 0
         ? t('maintenance_form.select_at_least_one')
         : null;
+  const statusPagesError =
+    statusPages.length === 0
+      ? t('maintenance_form.no_status_pages')
+      : selectedStatusPageIds.length === 0
+        ? t('maintenance_form.select_at_least_one_page')
+        : null;
 
   return (
     <form
@@ -81,7 +92,8 @@ export function MaintenanceWindowForm(props: CreateProps | EditProps) {
           timeError ||
           parsed.starts_at === null ||
           parsed.ends_at === null ||
-          selectedMonitorIds.length === 0
+          selectedMonitorIds.length === 0 ||
+          selectedStatusPageIds.length === 0
         )
           return;
         const base = {
@@ -89,6 +101,7 @@ export function MaintenanceWindowForm(props: CreateProps | EditProps) {
           starts_at: parsed.starts_at,
           ends_at: parsed.ends_at,
           monitor_ids: selectedMonitorIds,
+          status_page_ids: selectedStatusPageIds,
         };
         if (props.window) props.onSubmit({ ...base, message: normalized || null });
         else props.onSubmit(normalized ? { ...base, message: normalized } : base);
@@ -128,6 +141,15 @@ export function MaintenanceWindowForm(props: CreateProps | EditProps) {
           <div className="mt-2 text-sm text-red-500 dark:text-red-400">{monitorsError}</div>
         )}
       </div>
+
+      <StatusPageSelector
+        statusPages={statusPages}
+        selectedIds={selectedStatusPageIds}
+        onChange={setSelectedStatusPageIds}
+      />
+      {statusPagesError && (
+        <div className="text-sm text-red-500 dark:text-red-400">{statusPagesError}</div>
+      )}
 
       <div>
         <label className={labelClass}>{t('maintenance_form.title')}</label>
@@ -190,7 +212,7 @@ export function MaintenanceWindowForm(props: CreateProps | EditProps) {
         </Button>
         <Button
           type="submit"
-          disabled={isLoading || !title.trim() || !!timeError || !selectedMonitorIds.length}
+          disabled={isLoading || !title.trim() || !!timeError || !selectedMonitorIds.length || !selectedStatusPageIds.length}
           className="flex-1"
         >
           {isLoading ? t('common.saving') : window ? t('common.save') : t('common.create')}
