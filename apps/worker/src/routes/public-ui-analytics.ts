@@ -18,6 +18,7 @@ import {
   readPublicMonitorRuntimeTotalsSnapshot,
   toMonitorRuntimeTotalsEntryMap,
 } from '../public/monitor-runtime';
+import { resolveOptionalPublicStatusPage } from '../public/status-page';
 import { monitorVisibilityPredicate } from '../public/visibility';
 
 const ACTIVE_MONITOR_CACHE_TTL_MS = 30_000;
@@ -141,7 +142,25 @@ function getActiveMonitorRowsCache(db: D1Database): {
 async function readActiveMonitorRows(
   db: D1Database,
   includeHiddenMonitors: boolean,
+  statusPageId?: number,
 ): Promise<AnalyticsMonitorRow[]> {
+  if (statusPageId !== undefined) {
+    const { results } = await prepareStatement(
+      db,
+      `
+        SELECT m.id, m.name, m.type, m.created_at
+        FROM monitors m
+        JOIN status_page_monitors spm ON spm.monitor_id = m.id
+        WHERE spm.status_page_id = ?1
+          AND m.is_active = 1
+        ORDER BY m.id
+      `,
+    )
+      .bind(statusPageId)
+      .all<AnalyticsMonitorRow>();
+    return results ?? [];
+  }
+
   const cacheBucket = getActiveMonitorRowsCache(db);
   const cacheKey = includeHiddenMonitors ? 'hidden' : 'visible';
   const cached = cacheBucket[cacheKey];
@@ -182,6 +201,10 @@ export async function handlePublicAnalyticsUptime(c: {
 }): Promise<Response> {
   const includeHiddenMonitors = isAuthorizedStatusAdminRequest(c);
   const range = parseAnalyticsUptimeRange(c.req.query('range'));
+  const statusPage = await resolveOptionalPublicStatusPage(
+    c.env.DB,
+    c.req.query('__status_page'),
+  );
   const trace = createTrace(c);
   trace.setLabel('route', 'public/analytics-uptime');
   trace.setLabel('range', range);
@@ -193,7 +216,7 @@ export async function handlePublicAnalyticsUptime(c: {
 
   const monitorRowsPromise = trace.timeAsync(
     'active_monitors',
-    async () => await readActiveMonitorRows(c.env.DB, includeHiddenMonitors),
+    async () => await readActiveMonitorRows(c.env.DB, includeHiddenMonitors, statusPage?.id),
   );
   const historySnapshotPromise = trace.timeAsync(
     'history_snapshot',

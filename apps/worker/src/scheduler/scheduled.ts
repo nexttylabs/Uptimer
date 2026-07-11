@@ -1863,7 +1863,22 @@ export async function runScheduledTick(env: Env, ctx: ExecutionContext): Promise
           });
     }
 
-    return refreshPromise.then(queueShardedPublicSnapshotWork);
+    return refreshPromise.then(async () => {
+      await queueShardedPublicSnapshotWork();
+      const { refreshQueuedStatusPageSnapshots } = await import(
+        '../internal/status-page-refresh-core'
+      );
+      const result = await refreshQueuedStatusPageSnapshots({
+        env,
+        now: currentNow(),
+        limit: SHARDED_FRAGMENT_SEED_BATCH_SIZE,
+      });
+      if (result.refreshedPageIds.length > 0 && shouldLogScheduledRefresh(env)) {
+        console.log(
+          `scheduled: status_page_refresh pages=${result.refreshedPageIds.length} has_more=${result.hasMore ? 1 : 0}`,
+        );
+      }
+    });
   };
 
   const initializeNotifications = async (): Promise<InitializedNotifications> => {

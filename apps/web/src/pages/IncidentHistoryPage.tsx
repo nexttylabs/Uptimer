@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 
 import { useI18n } from '../app/I18nContext';
 import { useApplyServerLocaleSetting } from '../app/useApplyServerLocaleSetting';
+import { useStatusPageSlug } from '../app/StatusPageSlugContext';
 import { ApiError, fetchPublicIncidents, fetchStatus } from '../api/client';
 import type { Incident } from '../api/types';
 import { Markdown } from '../components/Markdown';
@@ -169,18 +170,19 @@ function IncidentDetail({
 
 export function IncidentHistoryPage() {
   const { t } = useI18n();
+  const slug = useStatusPageSlug();
   const [cursor, setCursor] = useState<number | undefined>(undefined);
   const [all, setAll] = useState<Incident[]>([]);
   const [nextCursor, setNextCursor] = useState<number | null>(null);
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
 
-  const statusQuery = useQuery({ queryKey: ['status'], queryFn: fetchStatus });
+  const statusQuery = useQuery({ queryKey: ['status', slug ?? 'default'], queryFn: () => fetchStatus(slug) });
   const timeZone = getBrowserTimeZone() ?? statusQuery.data?.site_timezone ?? 'UTC';
   useApplyServerLocaleSetting(statusQuery.data?.site_locale);
 
   const query = useQuery({
-    queryKey: ['public-incidents', 'resolved', cursor],
-    queryFn: () => fetchPublicIncidents(20, cursor, { resolvedOnly: true }),
+    queryKey: ['public-incidents', 'resolved', cursor, slug ?? 'default'],
+    queryFn: () => fetchPublicIncidents(20, cursor, { resolvedOnly: true, slug }),
   });
 
   useEffect(() => {
@@ -215,7 +217,7 @@ export function IncidentHistoryPage() {
         <div className="mx-auto max-w-[88rem] px-4 py-3 sm:px-6 sm:py-4 lg:px-8 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <Link
-              to="/"
+              to={slug ? `/status/${slug}` : '/'}
               className="flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800 transition-colors"
               aria-label={t('history.back_aria')}
             >

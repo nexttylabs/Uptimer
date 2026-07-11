@@ -176,6 +176,83 @@ export const maintenanceWindowMonitors = sqliteTable(
   }),
 );
 
+export const statusPages = sqliteTable(
+  'status_pages',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    slug: text('slug').notNull(),
+    name: text('name').notNull(),
+    title: text('title').notNull(),
+    description: text('description').notNull().default(''),
+    themeConfigJson: text('theme_config_json'),
+    isPublic: integer('is_public', { mode: 'boolean' }).notNull().default(true),
+    createdAt: integer('created_at')
+      .notNull()
+      .default(sql`(CAST(strftime('%s','now') AS INTEGER))`),
+    updatedAt: integer('updated_at')
+      .notNull()
+      .default(sql`(CAST(strftime('%s','now') AS INTEGER))`),
+  },
+  (t) => ({
+    slugUniq: uniqueIndex('uq_status_pages_slug').on(t.slug),
+  }),
+);
+
+export const statusPageMonitors = sqliteTable(
+  'status_page_monitors',
+  {
+    statusPageId: integer('status_page_id').notNull(),
+    monitorId: integer('monitor_id').notNull(),
+    groupName: text('group_name'),
+    groupSortOrder: integer('group_sort_order').notNull().default(0),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: integer('created_at')
+      .notNull()
+      .default(sql`(CAST(strftime('%s','now') AS INTEGER))`),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.statusPageId, t.monitorId] }),
+    monitorIdx: index('idx_status_page_monitors_monitor').on(t.monitorId),
+    pageSortIdx: index('idx_status_page_monitors_page_sort').on(
+      t.statusPageId,
+      t.groupSortOrder,
+      t.groupName,
+      t.sortOrder,
+      t.monitorId,
+    ),
+  }),
+);
+
+export const statusPageIncidents = sqliteTable(
+  'status_page_incidents',
+  {
+    statusPageId: integer('status_page_id').notNull(),
+    incidentId: integer('incident_id').notNull(),
+    createdAt: integer('created_at')
+      .notNull()
+      .default(sql`(CAST(strftime('%s','now') AS INTEGER))`),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.statusPageId, t.incidentId] }),
+    incidentIdx: index('idx_status_page_incidents_incident').on(t.incidentId),
+  }),
+);
+
+export const statusPageMaintenanceWindows = sqliteTable(
+  'status_page_maintenance_windows',
+  {
+    statusPageId: integer('status_page_id').notNull(),
+    maintenanceWindowId: integer('maintenance_window_id').notNull(),
+    createdAt: integer('created_at')
+      .notNull()
+      .default(sql`(CAST(strftime('%s','now') AS INTEGER))`),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.statusPageId, t.maintenanceWindowId] }),
+    windowIdx: index('idx_status_page_maintenance_windows_window').on(t.maintenanceWindowId),
+  }),
+);
+
 export const notificationChannels = sqliteTable('notification_channels', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   name: text('name').notNull(),

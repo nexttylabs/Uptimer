@@ -16,6 +16,7 @@ export const createIncidentInputSchema = z.object({
   message: z.string().min(1).optional(),
   started_at: z.number().int().positive().optional(),
   monitor_ids: z.array(z.number().int().positive()).min(1),
+  status_page_ids: z.array(z.number().int().positive()).min(1).max(500),
 });
 
 export type CreateIncidentInput = z.infer<typeof createIncidentInputSchema>;

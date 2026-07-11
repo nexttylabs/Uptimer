@@ -7,6 +7,7 @@ export const createMaintenanceWindowInputSchema = z
     starts_at: z.number().int(),
     ends_at: z.number().int(),
     monitor_ids: z.array(z.number().int().positive()).min(1),
+    status_page_ids: z.array(z.number().int().positive()).min(1).max(500),
   })
   .superRefine((val, ctx) => {
     if (val.starts_at >= val.ends_at) {
@@ -27,6 +28,7 @@ export const patchMaintenanceWindowInputSchema = z
     starts_at: z.number().int().optional(),
     ends_at: z.number().int().optional(),
     monitor_ids: z.array(z.number().int().positive()).min(1).optional(),
+    status_page_ids: z.array(z.number().int().positive()).min(1).max(500).optional(),
   })
   .refine((val) => Object.keys(val).length > 0, {
     message: 'At least one field must be provided',

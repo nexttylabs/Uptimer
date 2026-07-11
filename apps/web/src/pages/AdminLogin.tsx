@@ -22,7 +22,7 @@ export function AdminLogin() {
 
   const statusQuery = useQuery({
     queryKey: ['status'],
-    queryFn: fetchStatus,
+    queryFn: () => fetchStatus(),
     staleTime: 60_000,
   });
   useApplyServerLocaleSetting(statusQuery.data?.site_locale);

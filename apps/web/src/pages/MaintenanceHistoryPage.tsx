@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 
 import { useI18n } from '../app/I18nContext';
 import { useApplyServerLocaleSetting } from '../app/useApplyServerLocaleSetting';
+import { useStatusPageSlug } from '../app/StatusPageSlugContext';
 import { ApiError, fetchPublicMaintenanceWindows, fetchStatus } from '../api/client';
 import type { MaintenanceWindow } from '../api/types';
 import { Markdown } from '../components/Markdown';
@@ -19,11 +20,12 @@ function formatError(err: unknown): string | undefined {
 
 export function MaintenanceHistoryPage() {
   const { locale, t } = useI18n();
+  const slug = useStatusPageSlug();
   const [cursor, setCursor] = useState<number | undefined>(undefined);
   const [all, setAll] = useState<MaintenanceWindow[]>([]);
   const [nextCursor, setNextCursor] = useState<number | null>(null);
 
-  const statusQuery = useQuery({ queryKey: ['status'], queryFn: fetchStatus });
+  const statusQuery = useQuery({ queryKey: ['status', slug ?? 'default'], queryFn: () => fetchStatus(slug) });
   const timeZone = getBrowserTimeZone() ?? statusQuery.data?.site_timezone ?? 'UTC';
   useApplyServerLocaleSetting(statusQuery.data?.site_locale);
   const monitorNames = useMemo(
@@ -32,8 +34,8 @@ export function MaintenanceHistoryPage() {
   );
 
   const query = useQuery({
-    queryKey: ['public-maintenance-windows', 'history', cursor],
-    queryFn: () => fetchPublicMaintenanceWindows(20, cursor),
+    queryKey: ['public-maintenance-windows', 'history', cursor, slug ?? 'default'],
+    queryFn: () => fetchPublicMaintenanceWindows(20, cursor, slug),
   });
 
   useEffect(() => {
@@ -62,7 +64,7 @@ export function MaintenanceHistoryPage() {
         <div className="mx-auto max-w-[88rem] px-4 py-3 sm:px-6 sm:py-4 lg:px-8 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <Link
-              to="/"
+              to={slug ? `/status/${slug}` : '/'}
               className="flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800 transition-colors"
               aria-label={t('history.back_aria')}
             >

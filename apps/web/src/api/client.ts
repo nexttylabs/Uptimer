@@ -36,6 +36,7 @@ import type {
   PublicHomepageResponse,
   UptimeResponse,
 } from './types';
+import { statusPageSlugPrefix, type StatusPageSlug } from '../app/StatusPageSlugContext';
 
 // Build-time override for production deployments.
 // - default: same-origin `/api/v1` (works when you route /api to the Worker on the same hostname)
@@ -47,6 +48,10 @@ const publicCache = new Map<string, { at: number; value: unknown }>();
 
 const LS_PUBLIC_HOMEPAGE_KEY = 'uptimer_public_homepage_snapshot_v2';
 const LS_PUBLIC_STATUS_KEY = 'uptimer_public_status_snapshot_v1';
+
+function lsKeyForSlug(base: string, slug: StatusPageSlug): string {
+  return slug ? `${base}:${slug}` : base;
+}
 
 type PersistedHomepageCache = {
   at: number;
@@ -112,9 +117,9 @@ function setCachedPublic(key: string, value: unknown) {
   publicCache.set(key, { at: Date.now(), value });
 }
 
-function readPersistedHomepageCache(maxAgeMs: number): PublicHomepageResponse | null {
+function readPersistedHomepageCache(maxAgeMs: number, slug?: StatusPageSlug): PublicHomepageResponse | null {
   try {
-    const raw = localStorage.getItem(LS_PUBLIC_HOMEPAGE_KEY);
+    const raw = localStorage.getItem(lsKeyForSlug(LS_PUBLIC_HOMEPAGE_KEY, slug));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== 'object') return null;
@@ -130,18 +135,18 @@ function readPersistedHomepageCache(maxAgeMs: number): PublicHomepageResponse | 
   }
 }
 
-function writePersistedHomepageCache(value: PublicHomepageResponse): void {
+function writePersistedHomepageCache(value: PublicHomepageResponse, slug?: StatusPageSlug): void {
   try {
     const payload: PersistedHomepageCache = { at: Date.now(), value };
-    localStorage.setItem(LS_PUBLIC_HOMEPAGE_KEY, JSON.stringify(payload));
+    localStorage.setItem(lsKeyForSlug(LS_PUBLIC_HOMEPAGE_KEY, slug), JSON.stringify(payload));
   } catch {
     // Best-effort only.
   }
 }
 
-function readPersistedStatusCache(maxAgeMs: number): StatusResponse | null {
+function readPersistedStatusCache(maxAgeMs: number, slug?: StatusPageSlug): StatusResponse | null {
   try {
-    const raw = localStorage.getItem(LS_PUBLIC_STATUS_KEY);
+    const raw = localStorage.getItem(lsKeyForSlug(LS_PUBLIC_STATUS_KEY, slug));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== 'object') return null;
@@ -159,10 +164,10 @@ function readPersistedStatusCache(maxAgeMs: number): StatusResponse | null {
   }
 }
 
-function writePersistedStatusCache(value: StatusResponse): void {
+function writePersistedStatusCache(value: StatusResponse, slug?: StatusPageSlug): void {
   try {
     const payload: PersistedStatusCache = { at: Date.now(), value };
-    localStorage.setItem(LS_PUBLIC_STATUS_KEY, JSON.stringify(payload));
+    localStorage.setItem(lsKeyForSlug(LS_PUBLIC_STATUS_KEY, slug), JSON.stringify(payload));
   } catch {
     // Best-effort only.
   }
@@ -243,8 +248,11 @@ async function handleResponse<T>(res: Response): Promise<T> {
 }
 
 // Public API
-export async function fetchStatus(): Promise<StatusResponse> {
-  const url = `${API_BASE}/public/status`;
+export async function fetchStatus(slug?: StatusPageSlug): Promise<StatusResponse> {
+  const prefix = statusPageSlugPrefix(slug);
+  const url = prefix
+    ? `${API_BASE}/public/${prefix}/status`
+    : `${API_BASE}/public/status`;
   const auth = getOptionalPublicAuth();
   const cached = auth.shouldBypassCache ? null : getCachedPublic<StatusResponse>(url);
   if (cached) return cached;
@@ -254,12 +262,12 @@ export async function fetchStatus(): Promise<StatusResponse> {
     const data = await handleResponse<StatusResponse>(res);
     if (!auth.shouldBypassCache) {
       setCachedPublic(url, data);
-      writePersistedStatusCache(data);
+      writePersistedStatusCache(data, slug);
     }
     return data;
   } catch (err) {
     // Prefer returning a cached snapshot over a hard error on weak networks.
-    const persisted = auth.shouldBypassCache ? null : readPersistedStatusCache(10 * 60_000);
+    const persisted = auth.shouldBypassCache ? null : readPersistedStatusCache(10 * 60_000, slug);
     if (persisted) return persisted;
 
     const stale = auth.shouldBypassCache ? null : getCachedPublic<StatusResponse>(url);
@@ -269,8 +277,11 @@ export async function fetchStatus(): Promise<StatusResponse> {
   }
 }
 
-export async function fetchHomepage(): Promise<PublicHomepageResponse> {
-  const url = `${API_BASE}/public/homepage`;
+export async function fetchHomepage(slug?: StatusPageSlug): Promise<PublicHomepageResponse> {
+  const prefix = statusPageSlugPrefix(slug);
+  const url = prefix
+    ? `${API_BASE}/public/${prefix}/status`
+    : `${API_BASE}/public/homepage`;
   const auth = getOptionalPublicAuth();
   const cached = auth.shouldBypassCache ? null : getCachedPublic<PublicHomepageResponse>(url);
   if (cached) return cached;
@@ -280,11 +291,11 @@ export async function fetchHomepage(): Promise<PublicHomepageResponse> {
     const data = await handleResponse<PublicHomepageResponse>(res);
     if (!auth.shouldBypassCache) {
       setCachedPublic(url, data);
-      writePersistedHomepageCache(data);
+      writePersistedHomepageCache(data, slug);
     }
     return data;
   } catch (err) {
-    const persisted = auth.shouldBypassCache ? null : readPersistedHomepageCache(10 * 60_000);
+    const persisted = auth.shouldBypassCache ? null : readPersistedHomepageCache(10 * 60_000, slug);
     if (persisted) return persisted;
 
     const stale = auth.shouldBypassCache ? null : getCachedPublic<PublicHomepageResponse>(url);
@@ -297,8 +308,12 @@ export async function fetchHomepage(): Promise<PublicHomepageResponse> {
 export async function fetchLatency(
   monitorId: number,
   range: '24h' = '24h',
+  slug?: StatusPageSlug,
 ): Promise<LatencyResponse> {
-  const url = `${API_BASE}/public/monitors/${monitorId}/latency?range=${range}&format=compact-v1`;
+  const prefix = statusPageSlugPrefix(slug);
+  const url = prefix
+    ? `${API_BASE}/public/${prefix}/monitors/${monitorId}/latency?range=${range}&format=compact-v1`
+    : `${API_BASE}/public/monitors/${monitorId}/latency?range=${range}&format=compact-v1`;
   const auth = getOptionalPublicAuth();
   const cached = auth.shouldBypassCache ? null : getCachedPublic<LatencyResponse>(url);
   if (cached) return cached;
@@ -318,8 +333,12 @@ export async function fetchLatency(
 export async function fetchUptime(
   monitorId: number,
   range: '24h' | '7d' | '30d' = '24h',
+  slug?: StatusPageSlug,
 ): Promise<UptimeResponse> {
-  const url = `${API_BASE}/public/monitors/${monitorId}/uptime?range=${range}`;
+  const prefix = statusPageSlugPrefix(slug);
+  const url = prefix
+    ? `${API_BASE}/public/${prefix}/monitors/${monitorId}/uptime?range=${range}`
+    : `${API_BASE}/public/monitors/${monitorId}/uptime?range=${range}`;
   const auth = getOptionalPublicAuth();
   const cached = auth.shouldBypassCache ? null : getCachedPublic<UptimeResponse>(url);
   if (cached) return cached;
@@ -337,8 +356,12 @@ export async function fetchUptime(
 
 export async function fetchPublicUptimeOverview(
   range: '30d' | '90d' = '30d',
+  slug?: StatusPageSlug,
 ): Promise<PublicUptimeOverviewResponse> {
-  const url = `${API_BASE}/public/analytics/uptime?range=${range}`;
+  const prefix = statusPageSlugPrefix(slug);
+  const url = prefix
+    ? `${API_BASE}/public/${prefix}/analytics/uptime?range=${range}`
+    : `${API_BASE}/public/analytics/uptime?range=${range}`;
   const auth = getOptionalPublicAuth();
   const cached = auth.shouldBypassCache ? null : getCachedPublic<PublicUptimeOverviewResponse>(url);
   if (cached) return cached;
@@ -358,7 +381,7 @@ export async function fetchPublicUptimeOverview(
 
 export async function fetchPublicMonitorOutages(
   monitorId: number,
-  opts: { range?: '30d'; limit?: number; cursor?: number } = {},
+  opts: { range?: '30d'; limit?: number; cursor?: number; slug?: StatusPageSlug } = {},
 ): Promise<MonitorOutagesResponse> {
   const auth = getOptionalPublicAuth();
   const qs = new URLSearchParams();
@@ -366,7 +389,10 @@ export async function fetchPublicMonitorOutages(
   qs.set('limit', String(opts.limit ?? 200));
   if (opts.cursor !== undefined) qs.set('cursor', String(opts.cursor));
 
-  const url = `${API_BASE}/public/monitors/${monitorId}/outages?${qs.toString()}`;
+  const prefix = statusPageSlugPrefix(opts.slug);
+  const url = prefix
+    ? `${API_BASE}/public/${prefix}/monitors/${monitorId}/outages?${qs.toString()}`
+    : `${API_BASE}/public/monitors/${monitorId}/outages?${qs.toString()}`;
   const res = await fetch(url, auth.fetchInit);
   return handleResponse<MonitorOutagesResponse>(res);
 }
@@ -517,19 +543,23 @@ export async function deleteNotificationChannel(id: number): Promise<{ deleted: 
 export async function fetchPublicIncidents(
   limit = 20,
   cursor?: number,
-  opts: { resolvedOnly?: boolean } = {},
+  opts: { resolvedOnly?: boolean; slug?: StatusPageSlug } = {},
 ): Promise<PublicIncidentsResponse> {
   const auth = getOptionalPublicAuth();
   const qs = new URLSearchParams({ limit: String(limit) });
   if (opts.resolvedOnly) qs.set('resolved_only', '1');
   if (cursor) qs.set('cursor', String(cursor));
-  const res = await fetch(`${API_BASE}/public/incidents?${qs.toString()}`, auth.fetchInit);
+  const prefix = statusPageSlugPrefix(opts.slug);
+  const url = prefix
+    ? `${API_BASE}/public/${prefix}/incidents?${qs.toString()}`
+    : `${API_BASE}/public/incidents?${qs.toString()}`;
+  const res = await fetch(url, auth.fetchInit);
   return handleResponse<PublicIncidentsResponse>(res);
 }
 
 export async function fetchPublicIncidentDetail(
   id: number,
-  opts: { resolvedOnly?: boolean } = {},
+  opts: { resolvedOnly?: boolean; slug?: StatusPageSlug } = {},
 ): Promise<Incident> {
   const data = await fetchPublicIncidents(20, undefined, opts);
   const incident = data.incidents.find((entry) => entry.id === id);
@@ -543,14 +573,16 @@ export async function fetchPublicIncidentDetail(
 export async function fetchPublicMaintenanceWindows(
   limit = 20,
   cursor?: number,
+  slug: StatusPageSlug = undefined,
 ): Promise<PublicMaintenanceWindowsResponse> {
   const auth = getOptionalPublicAuth();
   const qs = new URLSearchParams({ limit: String(limit) });
   if (cursor) qs.set('cursor', String(cursor));
-  const res = await fetch(
-    `${API_BASE}/public/maintenance-windows?${qs.toString()}`,
-    auth.fetchInit,
-  );
+  const prefix = statusPageSlugPrefix(slug);
+  const url = prefix
+    ? `${API_BASE}/public/${prefix}/maintenance-windows?${qs.toString()}`
+    : `${API_BASE}/public/maintenance-windows?${qs.toString()}`;
+  const res = await fetch(url, auth.fetchInit);
   return handleResponse<PublicMaintenanceWindowsResponse>(res);
 }
 
@@ -558,13 +590,15 @@ export async function fetchPublicMaintenanceWindows(
 export async function fetchPublicDayContext(
   monitorId: number,
   dayStartAt: number,
+  slug: StatusPageSlug = undefined,
 ): Promise<PublicDayContextResponse> {
   const auth = getOptionalPublicAuth();
   const qs = new URLSearchParams({ day_start_at: String(dayStartAt) });
-  const res = await fetch(
-    `${API_BASE}/public/monitors/${monitorId}/day-context?${qs.toString()}`,
-    auth.fetchInit,
-  );
+  const prefix = statusPageSlugPrefix(slug);
+  const url = prefix
+    ? `${API_BASE}/public/${prefix}/monitors/${monitorId}/day-context?${qs.toString()}`
+    : `${API_BASE}/public/monitors/${monitorId}/day-context?${qs.toString()}`;
+  const res = await fetch(url, auth.fetchInit);
   return handleResponse<PublicDayContextResponse>(res);
 }
 

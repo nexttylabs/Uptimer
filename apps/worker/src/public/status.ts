@@ -14,14 +14,18 @@ import {
 export async function computePublicStatusPayload(
   db: D1Database,
   now: number,
-  opts: { includeHiddenMonitors?: boolean } = {},
+  opts: { includeHiddenMonitors?: boolean; statusPageId?: number } = {},
 ): Promise<PublicStatusResponse> {
   const includeHiddenMonitors = opts.includeHiddenMonitors ?? false;
+  const statusPageId = opts.statusPageId;
 
   const [monitorData, activeIncidentSummary, maintenanceWindows, settings] = await Promise.all([
-    buildPublicMonitorCards(db, now, { includeHiddenMonitors }),
-    readVisibleActiveIncidentSummary(db, includeHiddenMonitors),
-    listVisibleMaintenanceWindows(db, now, includeHiddenMonitors),
+    buildPublicMonitorCards(db, now, {
+      includeHiddenMonitors,
+      ...(statusPageId === undefined ? {} : { statusPageId }),
+    }),
+    readVisibleActiveIncidentSummary(db, includeHiddenMonitors, statusPageId),
+    listVisibleMaintenanceWindows(db, now, includeHiddenMonitors, statusPageId),
     readPublicSiteSettings(db),
   ]);
   const activeIncidents = activeIncidentSummary.items;

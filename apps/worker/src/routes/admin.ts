@@ -31,6 +31,12 @@ import {
   bumpHomepageSettingsGuardVersion,
 } from '../public/homepage-guard-state';
 import { refreshPublicHomepageSnapshotIfNeeded } from '../snapshots';
+import { enqueueStatusPageRefreshes } from '../snapshots/status-page-refresh-queue';
+import {
+  enqueueRefreshesForIncident,
+  enqueueRefreshesForMaintenanceWindow,
+  enqueueRefreshesForMonitor,
+} from '../snapshots/status-page-refresh-queue';
 import { runHttpCheck } from '../monitor/http';
 import {
   validateHttpResponseAssertionConfig,
@@ -47,6 +53,7 @@ import { encryptTelegramBotToken } from '../notify/telegram-token';
 import { adminAnalyticsRoutes } from './admin-analytics';
 import { adminExportsRoutes } from './admin-exports';
 import { adminSettingsRoutes } from './admin-settings';
+import { adminStatusPageRoutes } from './admin-status-pages';
 import {
   createIncidentInputSchema,
   createIncidentUpdateInputSchema,
@@ -88,6 +95,7 @@ adminRoutes.use('*', requireAdmin);
 adminRoutes.route('/analytics', adminAnalyticsRoutes);
 adminRoutes.route('/exports', adminExportsRoutes);
 adminRoutes.route('/settings', adminSettingsRoutes);
+adminRoutes.route('/status-pages', adminStatusPageRoutes);
 
 function queuePublicHomepageSnapshotRefresh(c: { env: Env; executionCtx: ExecutionContext }) {
   const now = Math.floor(Date.now() / 1000);
@@ -628,6 +636,7 @@ adminRoutes.patch('/monitors/:id', async (c) => {
   }
 
   await bumpHomepageMonitorGuardVersions(c.env.DB);
+  await enqueueRefreshesForMonitor(c.env.DB, id, now, 'monitor-updated');
   queuePublicHomepageSnapshotRefresh(c);
 
   return c.json({ monitor: monitorRowToApi(updated, null) });
@@ -653,10 +662,12 @@ adminRoutes.delete('/monitors/:id', async (c) => {
     c.env.DB.prepare('DELETE FROM monitor_daily_rollups WHERE monitor_id = ?1').bind(id),
     c.env.DB.prepare('DELETE FROM maintenance_window_monitors WHERE monitor_id = ?1').bind(id),
     c.env.DB.prepare('DELETE FROM incident_monitors WHERE monitor_id = ?1').bind(id),
+    c.env.DB.prepare('DELETE FROM status_page_monitors WHERE monitor_id = ?1').bind(id),
     c.env.DB.prepare('DELETE FROM monitors WHERE id = ?1').bind(id),
   ]);
 
   await bumpHomepageMonitorGuardVersions(c.env.DB);
+  await enqueueRefreshesForMonitor(c.env.DB, id, Math.floor(Date.now() / 1000), 'monitor-deleted');
   queuePublicHomepageSnapshotRefresh(c);
 
   return c.json({ deleted: true });
@@ -1110,6 +1121,35 @@ function normalizeIdList(ids: number[]): number[] {
   return out;
 }
 
+async function ensureStatusPagesExist(db: D1Database, statusPageIds: number[]): Promise<void> {
+  const ids = normalizeIdList(statusPageIds);
+  const placeholders = ids.map((_, idx) => `?${idx + 1}`).join(', ');
+  const { results } = await db
+    .prepare(`SELECT id FROM status_pages WHERE id IN (${placeholders})`)
+    .bind(...ids)
+    .all<{ id: number }>();
+  const found = new Set((results ?? []).map((row) => row.id));
+  const missing = ids.filter((id) => !found.has(id));
+  if (missing.length > 0) {
+    throw new AppError(400, 'INVALID_ARGUMENT', `Status page(s) not found: ${missing.join(', ')}`);
+  }
+}
+
+function statusPageLinkStatements(
+  db: D1Database,
+  table: 'status_page_incidents' | 'status_page_maintenance_windows',
+  parentColumn: 'incident_id' | 'maintenance_window_id',
+  parentId: number,
+  statusPageIds: number[],
+  now: number,
+): D1PreparedStatement[] {
+  return normalizeIdList(statusPageIds).map((statusPageId) =>
+    db.prepare(
+      `INSERT INTO ${table} (status_page_id, ${parentColumn}, created_at) VALUES (?1, ?2, ?3)`,
+    ).bind(statusPageId, parentId, now),
+  );
+}
+
 async function ensureMonitorsExist(db: D1Database, monitorIds: number[]): Promise<void> {
   const ids = normalizeIdList(monitorIds);
   if (ids.length === 0) {
@@ -1447,7 +1487,9 @@ adminRoutes.post('/incidents', async (c) => {
   }
 
   const monitorIds = normalizeIdList(input.monitor_ids);
+  const statusPageIds = normalizeIdList(input.status_page_ids);
   await ensureMonitorsExist(c.env.DB, monitorIds);
+  await ensureStatusPagesExist(c.env.DB, statusPageIds);
 
   const row = await c.env.DB.prepare(
     `
@@ -1463,17 +1505,26 @@ adminRoutes.post('/incidents', async (c) => {
     throw new AppError(500, 'INTERNAL', 'Failed to create incident');
   }
 
-  const linkStatements = monitorIds.map((monitorId) =>
-    c.env.DB.prepare(
-      `
-        INSERT INTO incident_monitors (incident_id, monitor_id, created_at)
-        VALUES (?1, ?2, ?3)
-      `,
-    ).bind(row.id, monitorId, now),
-  );
-  if (linkStatements.length > 0) {
-    await c.env.DB.batch(linkStatements);
-  }
+  const linkStatements = [
+    ...monitorIds.map((monitorId) =>
+      c.env.DB.prepare(
+        `
+          INSERT INTO incident_monitors (incident_id, monitor_id, created_at)
+          VALUES (?1, ?2, ?3)
+        `,
+      ).bind(row.id, monitorId, now),
+    ),
+    ...statusPageLinkStatements(
+      c.env.DB,
+      'status_page_incidents',
+      'incident_id',
+      row.id,
+      statusPageIds,
+      now,
+    ),
+  ];
+  await c.env.DB.batch(linkStatements);
+  await enqueueStatusPageRefreshes(c.env.DB, statusPageIds, now, 'incident-created');
 
   c.executionCtx.waitUntil(
     (async () => {
@@ -1711,6 +1762,7 @@ adminRoutes.patch('/incidents/:id/resolve', async (c) => {
   );
 
   await bumpHomepageIncidentGuardVersion(c.env.DB);
+  await enqueueRefreshesForIncident(c.env.DB, id, now, 'incident-resolved');
   queuePublicHomepageSnapshotRefresh(c);
 
   return c.json({
@@ -1749,6 +1801,7 @@ adminRoutes.delete('/incidents/:id', async (c) => {
         WHERE incident_id = ?1
       `,
     ).bind(id),
+    c.env.DB.prepare('DELETE FROM status_page_incidents WHERE incident_id = ?1').bind(id),
     c.env.DB.prepare(
       `
         DELETE FROM incidents
@@ -1758,6 +1811,7 @@ adminRoutes.delete('/incidents/:id', async (c) => {
   ]);
 
   await bumpHomepageIncidentGuardVersion(c.env.DB);
+  await enqueueRefreshesForIncident(c.env.DB, id, Math.floor(Date.now() / 1000), 'incident-deleted');
   queuePublicHomepageSnapshotRefresh(c);
 
   return c.json({ deleted: true });
@@ -1805,7 +1859,9 @@ adminRoutes.post('/maintenance-windows', async (c) => {
 
   const now = Math.floor(Date.now() / 1000);
   const monitorIds = normalizeIdList(input.monitor_ids);
+  const statusPageIds = normalizeIdList(input.status_page_ids);
   await ensureMonitorsExist(c.env.DB, monitorIds);
+  await ensureStatusPagesExist(c.env.DB, statusPageIds);
 
   const row = await c.env.DB.prepare(
     `
@@ -1821,17 +1877,26 @@ adminRoutes.post('/maintenance-windows', async (c) => {
     throw new AppError(500, 'INTERNAL', 'Failed to create maintenance window');
   }
 
-  const linkStatements = monitorIds.map((monitorId) =>
-    c.env.DB.prepare(
-      `
-        INSERT INTO maintenance_window_monitors (maintenance_window_id, monitor_id, created_at)
-        VALUES (?1, ?2, ?3)
-      `,
-    ).bind(row.id, monitorId, now),
-  );
-  if (linkStatements.length > 0) {
-    await c.env.DB.batch(linkStatements);
-  }
+  const linkStatements = [
+    ...monitorIds.map((monitorId) =>
+      c.env.DB.prepare(
+        `
+          INSERT INTO maintenance_window_monitors (maintenance_window_id, monitor_id, created_at)
+          VALUES (?1, ?2, ?3)
+        `,
+      ).bind(row.id, monitorId, now),
+    ),
+    ...statusPageLinkStatements(
+      c.env.DB,
+      'status_page_maintenance_windows',
+      'maintenance_window_id',
+      row.id,
+      statusPageIds,
+      now,
+    ),
+  ];
+  await c.env.DB.batch(linkStatements);
+  await enqueueStatusPageRefreshes(c.env.DB, statusPageIds, now, 'maintenance-created');
 
   await bumpHomepageMaintenanceGuardVersion(c.env.DB);
   queuePublicHomepageSnapshotRefresh(c);
@@ -1915,9 +1980,28 @@ adminRoutes.patch('/maintenance-windows/:id', async (c) => {
     await c.env.DB.batch(statements);
   }
 
+  if (input.status_page_ids !== undefined) {
+    const statusPageIds = normalizeIdList(input.status_page_ids);
+    await ensureStatusPagesExist(c.env.DB, statusPageIds);
+    await c.env.DB.batch([
+      c.env.DB
+        .prepare('DELETE FROM status_page_maintenance_windows WHERE maintenance_window_id = ?1')
+        .bind(id),
+      ...statusPageLinkStatements(
+        c.env.DB,
+        'status_page_maintenance_windows',
+        'maintenance_window_id',
+        id,
+        statusPageIds,
+        Math.floor(Date.now() / 1000),
+      ),
+    ]);
+  }
+
   const monitorIdsByWindowId = await listMaintenanceWindowMonitorIdsByWindowId(c.env.DB, [id]);
   const monitorIds = monitorIdsByWindowId.get(id) ?? [];
   await bumpHomepageMaintenanceGuardVersion(c.env.DB);
+  await enqueueRefreshesForMaintenanceWindow(c.env.DB, id, Math.floor(Date.now() / 1000), 'maintenance-updated');
   queuePublicHomepageSnapshotRefresh(c);
 
   return c.json({ maintenance_window: maintenanceWindowRowToApi(updated, monitorIds) });
@@ -1947,6 +2031,9 @@ adminRoutes.delete('/maintenance-windows/:id', async (c) => {
         WHERE maintenance_window_id = ?1
       `,
     ).bind(id),
+    c.env.DB
+      .prepare('DELETE FROM status_page_maintenance_windows WHERE maintenance_window_id = ?1')
+      .bind(id),
     c.env.DB.prepare(
       `
         DELETE FROM maintenance_windows
@@ -1956,6 +2043,7 @@ adminRoutes.delete('/maintenance-windows/:id', async (c) => {
   ]);
 
   await bumpHomepageMaintenanceGuardVersion(c.env.DB);
+  await enqueueRefreshesForMaintenanceWindow(c.env.DB, id, Math.floor(Date.now() / 1000), 'maintenance-deleted');
   queuePublicHomepageSnapshotRefresh(c);
 
   return c.json({ deleted: true });

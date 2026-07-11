@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 
 import { useI18n } from '../app/I18nContext';
 import { useApplyServerLocaleSetting } from '../app/useApplyServerLocaleSetting';
+import { useStatusPageSlug } from '../app/StatusPageSlugContext';
 import {
   fetchLatency,
   fetchHomepage,
@@ -70,9 +71,10 @@ function monitorGroupLabel(groupName: string | null | undefined, ungroupedLabel:
 
 function MonitorDetail({ monitorId, onClose }: { monitorId: number; onClose: () => void }) {
   const { t } = useI18n();
+  const slug = useStatusPageSlug();
   const { data, isLoading } = useQuery({
-    queryKey: ['latency', monitorId],
-    queryFn: () => fetchLatency(monitorId),
+    queryKey: ['latency', monitorId, slug ?? 'default'],
+    queryFn: () => fetchLatency(monitorId, '24h', slug),
   });
 
   return (
@@ -366,9 +368,10 @@ export function StatusPage() {
     null,
   );
 
+  const slug = useStatusPageSlug();
   const homepageQuery = useQuery({
-    queryKey: ['homepage'],
-    queryFn: fetchHomepage,
+    queryKey: ['homepage', slug ?? 'default'],
+    queryFn: () => fetchHomepage(slug),
     staleTime: 30_000,
     refetchInterval: 30_000,
     // Keep a recent injected homepage bootstrap stable through the current monitor window.
@@ -393,16 +396,16 @@ export function StatusPage() {
   }, [derivedTitle]);
 
   const outagesQuery = useQuery({
-    queryKey: ['public-monitor-outages', selectedDay?.monitorId, selectedDay?.dayStartAt],
+    queryKey: ['public-monitor-outages', selectedDay?.monitorId, selectedDay?.dayStartAt, slug ?? 'default'],
     queryFn: () =>
-      fetchPublicMonitorOutages(selectedDay?.monitorId as number, { range: '30d', limit: 200 }),
+      fetchPublicMonitorOutages(selectedDay?.monitorId as number, { range: '30d', limit: 200, slug }),
     enabled: selectedDay !== null,
   });
 
   const dayContextQuery = useQuery({
-    queryKey: ['public-day-context', selectedDay?.monitorId, selectedDay?.dayStartAt],
+    queryKey: ['public-day-context', selectedDay?.monitorId, selectedDay?.dayStartAt, slug ?? 'default'],
     queryFn: () =>
-      fetchPublicDayContext(selectedDay?.monitorId as number, selectedDay?.dayStartAt as number),
+      fetchPublicDayContext(selectedDay?.monitorId as number, selectedDay?.dayStartAt as number, slug),
     enabled: selectedDay !== null,
   });
 
@@ -419,12 +422,13 @@ export function StatusPage() {
       'public-incident-detail',
       selectedIncidentRequest?.incident.id,
       selectedIncidentRequest?.resolvedOnly,
+      slug ?? 'default',
     ],
     queryFn: () => {
       const resolvedOnly = selectedIncidentRequest?.resolvedOnly;
       return fetchPublicIncidentDetail(
         selectedIncidentRequest?.incident.id as number,
-        resolvedOnly === undefined ? {} : { resolvedOnly },
+        resolvedOnly === undefined ? { slug } : { resolvedOnly, slug },
       );
     },
     enabled: selectedIncidentRequest !== null,
@@ -708,7 +712,7 @@ export function StatusPage() {
                 {t('status_page.incident_history')}
               </h3>
               <Link
-                to="/history/incidents"
+                to={slug ? `/status/${slug}/history/incidents` : '/history/incidents'}
                 className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
               >
                 {t('common.view_more')}
@@ -741,7 +745,7 @@ export function StatusPage() {
                 {t('status_page.maintenance_history')}
               </h3>
               <Link
-                to="/history/maintenance"
+                to={slug ? `/status/${slug}/history/maintenance` : '/history/maintenance'}
                 className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
               >
                 {t('common.view_more')}

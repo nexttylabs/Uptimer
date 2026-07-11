@@ -2,6 +2,7 @@ import {
   type PublicStatusResponse,
 } from '../schemas/public-status';
 import { storedPublicStatusResponseSchema } from '../schemas/public-status-stored';
+import { publicStatusSnapshotKey } from './public-page-keys';
 
 const SNAPSHOT_KEY = 'status';
 const MAX_AGE_SECONDS = 60;
@@ -315,6 +316,28 @@ export async function readStaleStatusSnapshotJson(
     if (validated === null) return null;
 
     return { bodyJson: validated.bodyJson, age };
+  } catch {
+    return null;
+  }
+}
+
+export async function readPageStatusSnapshotJson(
+  db: D1Database,
+  now: number,
+  statusPageId: number,
+): Promise<{ bodyJson: string; age: number } | null> {
+  try {
+    const row = await db
+      .prepare(READ_STATUS_SQL)
+      .bind(publicStatusSnapshotKey(statusPageId))
+      .first<StatusSnapshotRow>();
+    if (!row || row.generated_at > now + FUTURE_SNAPSHOT_TOLERANCE_SECONDS) return null;
+
+    const age = Math.max(0, now - row.generated_at);
+    if (age > MAX_AGE_SECONDS) return null;
+
+    const validated = validateStatusSnapshotBodyJson(row.body_json);
+    return validated ? { bodyJson: validated.bodyJson, age } : null;
   } catch {
     return null;
   }

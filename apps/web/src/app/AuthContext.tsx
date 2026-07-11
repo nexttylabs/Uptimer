@@ -15,6 +15,7 @@ import { queryClient } from './queryClient';
 const LS_ADMIN_TOKEN_KEY = 'admin_token';
 const AUTH_SENSITIVE_PUBLIC_QUERY_KEYS = [
   ['status'],
+  ['homepage'],
   ['latency'],
   ['public-incidents'],
   ['public-maintenance-windows'],

@@ -2,6 +2,7 @@ import { AppError } from '../middleware/errors';
 import type { Trace } from '../observability/trace';
 import { publicStatusResponseSchema, type PublicStatusResponse } from '../schemas/public-status';
 import { primeStatusSnapshotCache } from './public-status-read';
+import { publicStatusSnapshotKey } from './public-page-keys';
 
 const SNAPSHOT_KEY = 'status';
 const MAX_AGE_SECONDS = 60;
@@ -229,6 +230,25 @@ export async function writeStatusSnapshot(
   if (didApplyStatusSnapshotWrite(result)) {
     prepared.prime();
   }
+}
+
+export async function writePageStatusSnapshot(
+  db: D1Database,
+  now: number,
+  statusPageId: number,
+  payload: PublicStatusResponse,
+): Promise<void> {
+  const bodyJson = JSON.stringify(payload);
+  await db
+    .prepare(UPSERT_STATUS_SQL)
+    .bind(
+      publicStatusSnapshotKey(statusPageId),
+      payload.generated_at,
+      bodyJson,
+      now,
+      now + FUTURE_SNAPSHOT_TOLERANCE_SECONDS,
+    )
+    .run();
 }
 
 export function didApplyStatusSnapshotWrite(

@@ -737,6 +737,38 @@ export async function handleFetch(request: Request, env: Env, ctx: ExecutionCont
   }
 
   try {
+    const statusPageMatch = /^\/api\/v1\/public\/status-pages\/([a-z0-9]+(?:-[a-z0-9]+)*)\/(status|incidents|maintenance-windows|analytics\/uptime|monitors\/\d+\/(?:day-context|latency|uptime|outages))$/.exec(
+      hotPathname,
+    );
+    if (statusPageMatch) {
+      const [, slug, resource] = statusPageMatch;
+      const { publicRoutes } = await import('./routes/public');
+      const scopedUrl = new URL(normalizedRequest.url);
+      if (resource === 'status' || resource === 'incidents' || resource === 'maintenance-windows') {
+        scopedUrl.pathname = `/status-pages/${slug}/${resource}`;
+        const routeRes = await publicRoutes.fetch(
+          rewritePublicRequest(new Request(scopedUrl.toString(), normalizedRequest)),
+          env,
+          ctx,
+        );
+        const res = shouldBypassPublicSharedCaching(normalizedRequest, env)
+          ? applyPrivateNoStore(routeRes, normalizedRequest)
+          : routeRes;
+        return applyCorsHeaders(res, origin, 'GET, OPTIONS');
+      }
+
+      scopedUrl.pathname = `/api/v1/public/${resource}`;
+      scopedUrl.searchParams.set('__status_page', slug!);
+      const routeRes = await publicRoutes.fetch(
+        rewritePublicRequest(new Request(scopedUrl.toString(), normalizedRequest)),
+        env,
+        ctx,
+      );
+      const res = shouldBypassPublicSharedCaching(normalizedRequest, env)
+        ? applyPrivateNoStore(routeRes, normalizedRequest)
+        : routeRes;
+      return applyCorsHeaders(res, origin, 'GET, OPTIONS');
+    }
     if (hotPathname === '/api/v1/public/homepage-artifact') {
       const routeRes = await handlePublicHomepageArtifact(normalizedRequest, env);
       const res = bypassPublicSharedCache

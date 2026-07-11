@@ -11,6 +11,12 @@ import {
 } from '../public/homepage';
 import { computePublicStatusPayload } from '../public/status';
 import {
+  assertStatusPageMonitor,
+  listStatusPageMonitorIds,
+  resolveOptionalPublicStatusPage,
+  resolvePublicStatusPage,
+} from '../public/status-page';
+import {
   buildNumberedPlaceholders,
   chunkPositiveIntegerIds,
   filterStatusPageScopedMonitorIds,
@@ -31,9 +37,11 @@ import {
   readStaleHomepageSnapshotArtifact,
   readStaleHomepageSnapshotArtifactJson,
   toSnapshotPayload,
+  writePageStatusSnapshot,
   writeStatusSnapshot,
 } from '../snapshots';
 
+import { readPageStatusSnapshotJson } from '../snapshots/public-status-read';
 import { AppError, handleError, handleNotFound } from '../middleware/errors';
 import { cachePublic } from '../middleware/cache-public';
 import { Trace, applyTraceToResponse, resolveTraceOptions } from '../observability/trace';
@@ -87,6 +95,22 @@ function applyPrivateNoStore(res: Response): Response {
 
 function withVisibilityAwareCaching(res: Response, includeHiddenMonitors: boolean): Response {
   return includeHiddenMonitors ? applyPrivateNoStore(res) : appendAuthorizationVary(res);
+}
+
+async function resolveRouteStatusPage(c: {
+  env: Pick<Env, 'DB'>;
+  req: { query(name: string): string | undefined };
+}) {
+  return await resolveOptionalPublicStatusPage(c.env.DB, c.req.query('__status_page'));
+}
+
+async function assertRouteStatusPageMonitor(
+  c: { env: Pick<Env, 'DB'>; req: { query(name: string): string | undefined } },
+  monitorId: number,
+) {
+  const page = await resolveRouteStatusPage(c);
+  if (page) await assertStatusPageMonitor(c.env.DB, page.id, monitorId);
+  return page;
 }
 
 async function readStaleStatusSnapshot(
@@ -953,6 +977,33 @@ publicRoutes.get('/status', async (c) => {
   }
 });
 
+publicRoutes.get('/status-pages/:slug/status', async (c) => {
+  const page = await resolvePublicStatusPage(c.env.DB, c.req.param('slug'));
+  const now = Math.floor(Date.now() / 1000);
+  const snapshot = await readPageStatusSnapshotJson(c.env.DB, now, page.id);
+  const payload = snapshot
+    ? JSON.parse(snapshot.bodyJson)
+    : await computePublicStatusPayload(c.env.DB, now, { statusPageId: page.id });
+  if (!snapshot) {
+    c.executionCtx.waitUntil(
+      writePageStatusSnapshot(c.env.DB, now, page.id, payload).catch((err) => {
+        console.warn('page status snapshot: write failed', err);
+      }),
+    );
+  }
+  const res = c.json({
+    ...payload,
+    status_page: {
+      slug: page.slug,
+      name: page.name,
+      title: page.title,
+      description: page.description,
+    },
+  });
+  if (snapshot) applyStatusCacheHeaders(res, snapshot.age);
+  return res;
+});
+
 publicRoutes.get('/homepage', async (c) => {
   const now = Math.floor(Date.now() / 1000);
   const trace = new Trace(
@@ -1121,6 +1172,30 @@ publicRoutes.get('/homepage-artifact', async (c) => {
   throw new AppError(503, 'UNAVAILABLE', 'Homepage artifact unavailable');
 });
 
+publicRoutes.get('/status-pages/:slug/incidents', async (c) => {
+  const page = await resolvePublicStatusPage(c.env.DB, c.req.param('slug'));
+  const limit = z.coerce.number().int().min(1).max(200).optional().default(20).parse(c.req.query('limit'));
+  const { results } = await c.env.DB.prepare(`
+    SELECT i.id, i.title, i.status, i.impact, i.message, i.started_at, i.resolved_at
+    FROM incidents i JOIN status_page_incidents spi ON spi.incident_id = i.id
+    WHERE spi.status_page_id = ?1 ORDER BY i.started_at DESC, i.id DESC LIMIT ?2
+  `).bind(page.id, limit).all<IncidentRow>();
+  const rows = results ?? [];
+  const [updates, monitorLinks] = await Promise.all([
+    listIncidentUpdatesByIncidentId(c.env.DB, rows.map((row) => row.id)),
+    listIncidentMonitorIdsByIncidentId(c.env.DB, rows.map((row) => row.id)),
+  ]);
+  const pageMonitorIds = await listStatusPageMonitorIds(c.env.DB, page.id, [...monitorLinks.values()].flat());
+  return c.json({
+    incidents: rows.map((row) => incidentRowToApi(
+      row,
+      updates.get(row.id) ?? [],
+      (monitorLinks.get(row.id) ?? []).filter((id) => pageMonitorIds.has(id)),
+    )),
+    next_cursor: null,
+  });
+});
+
 publicRoutes.get('/incidents', async (c) => {
   const includeHiddenMonitors = isAuthorizedStatusAdminRequest(c);
   const limit = z.coerce
@@ -1281,6 +1356,26 @@ publicRoutes.get('/incidents', async (c) => {
   );
 });
 
+publicRoutes.get('/status-pages/:slug/maintenance-windows', async (c) => {
+  const page = await resolvePublicStatusPage(c.env.DB, c.req.param('slug'));
+  const limit = z.coerce.number().int().min(1).max(200).optional().default(20).parse(c.req.query('limit'));
+  const { results } = await c.env.DB.prepare(`
+    SELECT mw.id, mw.title, mw.message, mw.starts_at, mw.ends_at, mw.created_at
+    FROM maintenance_windows mw JOIN status_page_maintenance_windows spmw ON spmw.maintenance_window_id = mw.id
+    WHERE spmw.status_page_id = ?1 ORDER BY mw.ends_at DESC, mw.id DESC LIMIT ?2
+  `).bind(page.id, limit).all<MaintenanceWindowRow>();
+  const rows = results ?? [];
+  const monitorLinks = await listMaintenanceWindowMonitorIdsByWindowId(c.env.DB, rows.map((row) => row.id));
+  const pageMonitorIds = await listStatusPageMonitorIds(c.env.DB, page.id, [...monitorLinks.values()].flat());
+  return c.json({
+    maintenance_windows: rows.map((row) => maintenanceWindowRowToApi(
+      row,
+      (monitorLinks.get(row.id) ?? []).filter((id) => pageMonitorIds.has(id)),
+    )),
+    next_cursor: null,
+  });
+});
+
 publicRoutes.get('/maintenance-windows', async (c) => {
   const includeHiddenMonitors = isAuthorizedStatusAdminRequest(c);
   const limit = z.coerce
@@ -1312,6 +1407,7 @@ publicRoutes.get('/maintenance-windows', async (c) => {
 publicRoutes.get('/monitors/:id/day-context', async (c) => {
   const includeHiddenMonitors = isAuthorizedStatusAdminRequest(c);
   const id = z.coerce.number().int().positive().parse(c.req.param('id'));
+  await assertRouteStatusPageMonitor(c, id);
   const dayStartAt = z.coerce.number().int().nonnegative().parse(c.req.query('day_start_at'));
   const dayEndAt = dayStartAt + 86400;
 
@@ -1445,6 +1541,7 @@ publicRoutes.get('/monitors/:id/day-context', async (c) => {
 publicRoutes.get('/monitors/:id/latency', async (c) => {
   const includeHiddenMonitors = isAuthorizedStatusAdminRequest(c);
   const id = z.coerce.number().int().positive().parse(c.req.param('id'));
+  await assertRouteStatusPageMonitor(c, id);
   const range = latencyRangeSchema.optional().default('24h').parse(c.req.query('range'));
 
   const monitor = await c.env.DB.prepare(
@@ -1507,6 +1604,7 @@ function resolveUptimeRangeStart(
 publicRoutes.get('/monitors/:id/uptime', async (c) => {
   const includeHiddenMonitors = isAuthorizedStatusAdminRequest(c);
   const id = z.coerce.number().int().positive().parse(c.req.param('id'));
+  await assertRouteStatusPageMonitor(c, id);
   const range = uptimeRangeSchema.optional().default('24h').parse(c.req.query('range'));
 
   const monitor = await c.env.DB.prepare(
@@ -1682,6 +1780,7 @@ async function computePartialUptimeTotals(
 
 publicRoutes.get('/analytics/uptime', async (c) => {
   const includeHiddenMonitors = isAuthorizedStatusAdminRequest(c);
+  const statusPage = await resolveRouteStatusPage(c);
   const range = uptimeOverviewRangeSchema.optional().default('30d').parse(c.req.query('range'));
 
   const now = Math.floor(Date.now() / 1000);
@@ -1695,11 +1794,14 @@ publicRoutes.get('/analytics/uptime', async (c) => {
       SELECT m.id, m.name, m.type, m.interval_sec, m.created_at, s.last_checked_at
       FROM monitors m
       LEFT JOIN monitor_state s ON s.monitor_id = m.id
+      ${statusPage ? 'JOIN status_page_monitors spm ON spm.monitor_id = m.id' : ''}
       WHERE m.is_active = 1
-        AND ${monitorVisibilityPredicate(includeHiddenMonitors, 'm')}
+        AND ${statusPage ? 'spm.status_page_id = ?1' : monitorVisibilityPredicate(includeHiddenMonitors, 'm')}
       ORDER BY m.id
     `,
-  ).all<{
+  )
+    .bind(...(statusPage ? [statusPage.id] : []))
+    .all<{
     id: number;
     name: string;
     type: string;
@@ -1826,6 +1928,7 @@ publicRoutes.get('/analytics/uptime', async (c) => {
 publicRoutes.get('/monitors/:id/outages', async (c) => {
   const includeHiddenMonitors = isAuthorizedStatusAdminRequest(c);
   const id = z.coerce.number().int().positive().parse(c.req.param('id'));
+  await assertRouteStatusPageMonitor(c, id);
   const range = z.enum(['30d']).optional().default('30d').parse(c.req.query('range'));
   const limit = z.coerce
     .number()

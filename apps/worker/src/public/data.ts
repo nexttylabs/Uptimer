@@ -14,6 +14,7 @@ import {
   toMonitorRuntimeEntryMap,
 } from './monitor-runtime';
 import { readSettings } from '../settings';
+import { listStatusPageMonitorIds } from './status-page';
 import {
   buildNumberedPlaceholders,
   chunkPositiveIntegerIds,
@@ -986,7 +987,7 @@ export function toUptimePct(totalSec: number, uptimeSec: number): number | null 
 export async function buildPublicMonitorCards(
   db: D1Database,
   now: number,
-  opts: { includeHiddenMonitors?: boolean } = {},
+  opts: { includeHiddenMonitors?: boolean; statusPageId?: number } = {},
 ): Promise<{
   monitors: PublicStatusResponse['monitors'];
   summary: PublicStatusResponse['summary'];
@@ -994,8 +995,13 @@ export async function buildPublicMonitorCards(
   uptimeRatingLevel: 1 | 2 | 3 | 4 | 5;
 }> {
   const includeHiddenMonitors = opts.includeHiddenMonitors ?? false;
+  const statusPageId = opts.statusPageId;
   const rangeEndFullDays = utcDayStart(now);
   const rangeEnd = now;
+  const pageScoped = statusPageId !== undefined;
+  const groupNameColumn = pageScoped ? 'spm.group_name' : 'm.group_name';
+  const groupSortOrderColumn = pageScoped ? 'spm.group_sort_order' : 'm.group_sort_order';
+  const sortOrderColumn = pageScoped ? 'spm.sort_order' : 'm.sort_order';
   const { results } = await db
     .prepare(
       `
@@ -1004,9 +1010,9 @@ export async function buildPublicMonitorCards(
         m.name,
         m.type,
         m.display_url,
-        m.group_name,
-        m.group_sort_order,
-        m.sort_order,
+        ${groupNameColumn} AS group_name,
+        ${groupSortOrderColumn} AS group_sort_order,
+        ${sortOrderColumn} AS sort_order,
         m.interval_sec,
         m.created_at,
         s.status AS state_status,
@@ -1014,20 +1020,22 @@ export async function buildPublicMonitorCards(
         s.last_latency_ms
       FROM monitors m
       LEFT JOIN monitor_state s ON s.monitor_id = m.id
+      ${pageScoped ? 'JOIN status_page_monitors spm ON spm.monitor_id = m.id' : ''}
       WHERE m.is_active = 1
-        AND ${monitorVisibilityPredicate(includeHiddenMonitors, 'm')}
+        AND ${pageScoped ? 'spm.status_page_id = ?1' : monitorVisibilityPredicate(includeHiddenMonitors, 'm')}
       ORDER BY
-        m.group_sort_order ASC,
+        ${groupSortOrderColumn} ASC,
         lower(
           CASE
-            WHEN m.group_name IS NULL OR trim(m.group_name) = '' THEN 'Ungrouped'
-            ELSE trim(m.group_name)
+            WHEN ${groupNameColumn} IS NULL OR trim(${groupNameColumn}) = '' THEN 'Ungrouped'
+            ELSE trim(${groupNameColumn})
           END
         ) ASC,
-        m.sort_order ASC,
+        ${sortOrderColumn} ASC,
         m.id ASC
     `,
     )
+    .bind(...(pageScoped ? [statusPageId!] : []))
     .all<PublicStatusMonitorRow>();
 
   const rawMonitors = results ?? [];
@@ -1247,20 +1255,25 @@ export async function listVisibleActiveIncidents(
 export async function readVisibleActiveIncidentSummary(
   db: D1Database,
   includeHiddenMonitors: boolean,
+  statusPageId?: number,
 ): Promise<VisibleActiveIncidentSummary> {
-  const incidentVisibilitySql = incidentStatusPageVisibilityPredicate(includeHiddenMonitors);
+  const pageScoped = statusPageId !== undefined;
+  const incidentVisibilitySql = pageScoped
+    ? 'spi.status_page_id = ?2'
+    : incidentStatusPageVisibilityPredicate(includeHiddenMonitors);
   const { results } = await db
     .prepare(
       `
       SELECT id, title, status, impact, message, started_at, resolved_at
       FROM incidents
+      ${pageScoped ? 'JOIN status_page_incidents spi ON spi.incident_id = incidents.id' : ''}
       WHERE status != 'resolved'
         AND ${incidentVisibilitySql}
       ORDER BY started_at DESC, id DESC
       LIMIT ?1
     `,
     )
-    .bind(STATUS_ACTIVE_INCIDENT_LIMIT)
+    .bind(STATUS_ACTIVE_INCIDENT_LIMIT, ...(pageScoped ? [statusPageId!] : []))
     .all<IncidentRow>();
 
   const rows = results ?? [];
@@ -1271,6 +1284,7 @@ export async function readVisibleActiveIncidentSummary(
         `
         SELECT id, title, status, impact, message, started_at, resolved_at
         FROM incidents
+        ${pageScoped ? 'JOIN status_page_incidents spi ON spi.incident_id = incidents.id' : ''}
         WHERE status != 'resolved'
           AND ${incidentVisibilitySql}
         ORDER BY
@@ -1285,14 +1299,32 @@ export async function readVisibleActiveIncidentSummary(
         LIMIT 1
       `,
       )
+      .bind(...(pageScoped ? [statusPageId!] : []))
       .first<IncidentRow>();
   }
 
-  const visibleEntriesById = await mapVisibleIncidentEntries(
-    db,
-    bannerRow && !rows.some((row) => row.id === bannerRow?.id) ? [...rows, bannerRow] : rows,
-    includeHiddenMonitors,
-  );
+  const pageRows = bannerRow && !rows.some((row) => row.id === bannerRow?.id) ? [...rows, bannerRow] : rows;
+  const visibleEntriesById = pageScoped
+    ? new Map<number, FilteredIncidentEntry>()
+    : await mapVisibleIncidentEntries(db, pageRows, includeHiddenMonitors);
+
+  if (pageScoped) {
+    const monitorIdsByIncidentId = await listIncidentMonitorIdsByIncidentId(
+      db,
+      pageRows.map((row) => row.id),
+    );
+    const pageMonitorIds = await listStatusPageMonitorIds(
+      db,
+      statusPageId!,
+      [...monitorIdsByIncidentId.values()].flat(),
+    );
+    for (const row of pageRows) {
+      visibleEntriesById.set(row.id, {
+        row,
+        monitorIds: (monitorIdsByIncidentId.get(row.id) ?? []).filter((id) => pageMonitorIds.has(id)),
+      });
+    }
+  }
   const items = rows
     .map((row) => visibleEntriesById.get(row.id) ?? null)
     .filter((entry): entry is FilteredIncidentEntry => entry !== null)
@@ -1310,14 +1342,16 @@ export async function listVisibleMaintenanceWindows(
   db: D1Database,
   now: number,
   includeHiddenMonitors: boolean,
+  statusPageId?: number,
 ): Promise<{
   active: FilteredMaintenanceWindowEntry[];
   upcoming: FilteredMaintenanceWindowEntry[];
   activeMonitorIds: ReadonlySet<number>;
 }> {
-  const maintenanceVisibilitySql = maintenanceWindowStatusPageVisibilityPredicate(
-    includeHiddenMonitors,
-  );
+  const pageScoped = statusPageId !== undefined;
+  const maintenanceVisibilitySql = pageScoped
+    ? 'spmw.status_page_id = ?3'
+    : maintenanceWindowStatusPageVisibilityPredicate(includeHiddenMonitors);
 
   const [{ results: activeResults }, { results: upcomingResults }] = await Promise.all([
     db
@@ -1325,26 +1359,28 @@ export async function listVisibleMaintenanceWindows(
         `
       SELECT id, title, message, starts_at, ends_at, created_at
       FROM maintenance_windows
+      ${pageScoped ? 'JOIN status_page_maintenance_windows spmw ON spmw.maintenance_window_id = maintenance_windows.id' : ''}
       WHERE starts_at <= ?1 AND ends_at > ?1
         AND ${maintenanceVisibilitySql}
       ORDER BY starts_at ASC, id ASC
       LIMIT ?2
     `,
       )
-      .bind(now, STATUS_ACTIVE_MAINTENANCE_LIMIT)
+      .bind(now, STATUS_ACTIVE_MAINTENANCE_LIMIT, ...(pageScoped ? [statusPageId!] : []))
       .all<MaintenanceWindowRow>(),
     db
       .prepare(
         `
       SELECT id, title, message, starts_at, ends_at, created_at
       FROM maintenance_windows
+      ${pageScoped ? 'JOIN status_page_maintenance_windows spmw ON spmw.maintenance_window_id = maintenance_windows.id' : ''}
       WHERE starts_at > ?1
         AND ${maintenanceVisibilitySql}
       ORDER BY starts_at ASC, id ASC
       LIMIT ?2
     `,
       )
-      .bind(now, STATUS_UPCOMING_MAINTENANCE_LIMIT)
+      .bind(now, STATUS_UPCOMING_MAINTENANCE_LIMIT, ...(pageScoped ? [statusPageId!] : []))
       .all<MaintenanceWindowRow>(),
   ]);
 
@@ -1362,23 +1398,28 @@ export async function listVisibleMaintenanceWindows(
     ),
   ]);
 
-  const statusPageVisibleMonitorIds = includeHiddenMonitors
-    ? new Set<number>()
-    : await listStatusPageVisibleMonitorIds(
-        db,
-        [...activeWindowMonitorIdsByWindowId.values(), ...upcomingWindowMonitorIdsByWindowId.values()].flat(),
-      );
+  const allWindowMonitorIds = [
+    ...activeWindowMonitorIdsByWindowId.values(),
+    ...upcomingWindowMonitorIdsByWindowId.values(),
+  ].flat();
+  const statusPageVisibleMonitorIds = pageScoped
+    ? await listStatusPageMonitorIds(db, statusPageId!, allWindowMonitorIds)
+    : includeHiddenMonitors
+      ? new Set<number>()
+      : await listStatusPageVisibleMonitorIds(db, allWindowMonitorIds);
 
   const active = activeRows
     .map((row) => {
       const originalMonitorIds = activeWindowMonitorIdsByWindowId.get(row.id) ?? [];
-      const visibleMonitorIds = filterStatusPageScopedMonitorIds(
-        originalMonitorIds,
-        statusPageVisibleMonitorIds,
-        includeHiddenMonitors,
-      );
+      const visibleMonitorIds = pageScoped
+        ? originalMonitorIds.filter((id) => statusPageVisibleMonitorIds.has(id))
+        : filterStatusPageScopedMonitorIds(
+            originalMonitorIds,
+            statusPageVisibleMonitorIds,
+            includeHiddenMonitors,
+          );
 
-      if (!shouldIncludeStatusPageScopedItem(originalMonitorIds, visibleMonitorIds)) {
+      if (!pageScoped && !shouldIncludeStatusPageScopedItem(originalMonitorIds, visibleMonitorIds)) {
         return null;
       }
 
@@ -1393,13 +1434,15 @@ export async function listVisibleMaintenanceWindows(
   const upcoming = upcomingRows
     .map((row) => {
       const originalMonitorIds = upcomingWindowMonitorIdsByWindowId.get(row.id) ?? [];
-      const visibleMonitorIds = filterStatusPageScopedMonitorIds(
-        originalMonitorIds,
-        statusPageVisibleMonitorIds,
-        includeHiddenMonitors,
-      );
+      const visibleMonitorIds = pageScoped
+        ? originalMonitorIds.filter((id) => statusPageVisibleMonitorIds.has(id))
+        : filterStatusPageScopedMonitorIds(
+            originalMonitorIds,
+            statusPageVisibleMonitorIds,
+            includeHiddenMonitors,
+          );
 
-      if (!shouldIncludeStatusPageScopedItem(originalMonitorIds, visibleMonitorIds)) {
+      if (!pageScoped && !shouldIncludeStatusPageScopedItem(originalMonitorIds, visibleMonitorIds)) {
         return null;
       }
 
@@ -1412,7 +1455,13 @@ export async function listVisibleMaintenanceWindows(
     .slice(0, STATUS_UPCOMING_MAINTENANCE_LIMIT);
 
   const activeMonitorIds = new Set<number>();
-  if (activeRows.length >= STATUS_ACTIVE_MAINTENANCE_LIMIT) {
+  if (pageScoped) {
+    for (const monitorIds of activeWindowMonitorIdsByWindowId.values()) {
+      for (const monitorId of monitorIds) {
+        if (statusPageVisibleMonitorIds.has(monitorId)) activeMonitorIds.add(monitorId);
+      }
+    }
+  } else if (activeRows.length >= STATUS_ACTIVE_MAINTENANCE_LIMIT) {
     const { results: activeMonitorResults } = await db
       .prepare(
         `

@@ -1042,13 +1042,16 @@ export default {
       const wantsHtml = request.method === 'GET' && acceptsHtml(request);
 
       // Special-case the status page for HTML injection.
-      const isStatusPage = url.pathname === '/' || url.pathname === '/index.html';
+      const statusPageMatch = url.pathname.match(/^\/status\/([a-z0-9]+(?:-[a-z0-9]+)*)$/);
+      const isStatusPage = url.pathname === '/' || url.pathname === '/index.html' || statusPageMatch !== null;
       if (wantsHtml && isStatusPage) {
+        const slug = statusPageMatch ? statusPageMatch[1] : null;
+        const cachePath = slug ? `/status/${slug}` : '/';
         if (trace) {
           trace.setLabel('route', 'pages/homepage');
         }
 
-        const cacheKey = new Request(url.origin + '/', { method: 'GET' });
+        const cacheKey = new Request(url.origin + cachePath, { method: 'GET' });
         let cached = null;
         if (trace && trace.mode === 'bypass-cache') {
           trace.setLabel('cache', 'bypass');
@@ -1095,7 +1098,7 @@ export default {
           ? await trace.timeAsync('index_text', () => base.text())
           : await base.text();
 
-        const artifact = await fetchPublicHomepageArtifact(env, trace, now);
+        const artifact = slug ? null : await fetchPublicHomepageArtifact(env, trace, now);
         if (!artifact) {
           if (cached) {
             const cachedGeneratedAt = readGeneratedAtHeader(cached);
@@ -1255,7 +1258,8 @@ export default {
         if (wantsHtml) {
           if (isStatusPage) {
             try {
-              const cacheKey = new Request(url.origin + '/', { method: 'GET' });
+              const fallbackCachePath = url.pathname === '/' || url.pathname === '/index.html' ? '/' : url.pathname;
+              const cacheKey = new Request(url.origin + fallbackCachePath, { method: 'GET' });
               const cached = await caches.default.match(cacheKey);
               if (cached) {
                 const now = Math.floor(Date.now() / 1000);

@@ -1,9 +1,10 @@
 import { Suspense, lazy } from 'react';
-import { createBrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, useParams } from 'react-router-dom';
 
 import { StatusPage } from '../pages/StatusPage';
 import { ADMIN_ANALYTICS_PATH, ADMIN_LOGIN_PATH, ADMIN_PATH } from './adminPaths';
 import { ProtectedRoute } from './ProtectedRoute';
+import { StatusPageSlugContext, type StatusPageSlug } from './StatusPageSlugContext';
 
 const AdminDashboard = lazy(async () => {
   const mod = await import('../pages/AdminDashboard');
@@ -34,8 +35,51 @@ function PageFallback() {
   return <div className="min-h-screen bg-slate-50 dark:bg-slate-900" />;
 }
 
+const SLUG_PATTERN = '[a-z0-9]+(?:-[a-z0-9]+)*';
+
+function StatusPageRoute() {
+  const { slug } = useParams<{ slug: string }>();
+  const normalizedSlug: StatusPageSlug = slug ?? undefined;
+  return (
+    <StatusPageSlugContext.Provider value={normalizedSlug}>
+      <StatusPage />
+    </StatusPageSlugContext.Provider>
+  );
+}
+
+function SlugScopedRoute({ children }: { children: React.ReactNode }) {
+  const { slug } = useParams<{ slug: string }>();
+  const normalizedSlug: StatusPageSlug = slug ?? undefined;
+  return (
+    <StatusPageSlugContext.Provider value={normalizedSlug}>
+      {children}
+    </StatusPageSlugContext.Provider>
+  );
+}
+
 export const router = createBrowserRouter([
-  { path: '/', element: <StatusPage /> },
+  { path: '/', element: <StatusPageRoute /> },
+  { path: `/status/:slug(${SLUG_PATTERN})`, element: <StatusPageRoute /> },
+  {
+    path: `/status/:slug(${SLUG_PATTERN})/history/incidents`,
+    element: (
+      <SlugScopedRoute>
+        <Suspense fallback={<PageFallback />}>
+          <IncidentHistoryPage />
+        </Suspense>
+      </SlugScopedRoute>
+    ),
+  },
+  {
+    path: `/status/:slug(${SLUG_PATTERN})/history/maintenance`,
+    element: (
+      <SlugScopedRoute>
+        <Suspense fallback={<PageFallback />}>
+          <MaintenanceHistoryPage />
+        </Suspense>
+      </SlugScopedRoute>
+    ),
+  },
   {
     path: '/history/incidents',
     element: (

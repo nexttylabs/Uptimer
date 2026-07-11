@@ -1,0 +1,90 @@
+import { AppError } from '../middleware/errors';
+
+export type PublicStatusPage = {
+  id: number;
+  slug: string;
+  name: string;
+  title: string;
+  description: string;
+};
+
+const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+export async function resolvePublicStatusPage(
+  db: D1Database,
+  slug: string,
+): Promise<PublicStatusPage> {
+  if (!slugPattern.test(slug)) {
+    throw new AppError(404, 'NOT_FOUND', 'Status page not found');
+  }
+
+  const page = await db
+    .prepare(
+      `
+        SELECT id, slug, name, title, description
+        FROM status_pages
+        WHERE slug = ?1 AND is_public = 1
+      `,
+    )
+    .bind(slug)
+    .first<PublicStatusPage>();
+  if (!page) throw new AppError(404, 'NOT_FOUND', 'Status page not found');
+  return page;
+}
+
+export async function resolveDefaultPublicStatusPage(db: D1Database): Promise<PublicStatusPage> {
+  return await resolvePublicStatusPage(db, 'default');
+}
+
+export async function resolveOptionalPublicStatusPage(
+  db: D1Database,
+  slug: string | undefined,
+): Promise<PublicStatusPage | undefined> {
+  return slug === undefined ? undefined : await resolvePublicStatusPage(db, slug);
+}
+
+export async function listStatusPageMonitorIds(
+  db: D1Database,
+  statusPageId: number,
+  monitorIds: number[],
+): Promise<Set<number>> {
+  const ids = [...new Set(monitorIds.filter((id) => Number.isInteger(id) && id > 0))];
+  if (ids.length === 0) return new Set();
+
+  const placeholders = ids.map((_, index) => `?${index + 2}`).join(', ');
+  const { results } = await db
+    .prepare(
+      `
+        SELECT monitor_id
+        FROM status_page_monitors
+        WHERE status_page_id = ?1
+          AND monitor_id IN (${placeholders})
+      `,
+    )
+    .bind(statusPageId, ...ids)
+    .all<{ monitor_id: number }>();
+
+  return new Set((results ?? []).map((row) => row.monitor_id));
+}
+
+export async function assertStatusPageMonitor(
+  db: D1Database,
+  statusPageId: number,
+  monitorId: number,
+): Promise<{ id: number }> {
+  const monitor = await db
+    .prepare(
+      `
+        SELECT m.id
+        FROM monitors m
+        JOIN status_page_monitors spm ON spm.monitor_id = m.id
+        WHERE spm.status_page_id = ?1
+          AND m.id = ?2
+          AND m.is_active = 1
+      `,
+    )
+    .bind(statusPageId, monitorId)
+    .first<{ id: number }>();
+  if (!monitor) throw new AppError(404, 'NOT_FOUND', 'Monitor not found');
+  return monitor;
+}
