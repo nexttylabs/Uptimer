@@ -443,6 +443,24 @@ jobs:
 
           printf %s "$api_origin" | pnpm -C apps/worker exec wrangler --cwd ../.. pages secret put UPTIMER_API_ORIGIN --project-name "$PAGES_PROJECT"
 
+      - name: Upsert Pages env for custom-domain default hosts (best-effort)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Derive the Pages project's *.pages.dev hostname so custom-host routing
+          # knows which hosts are platform defaults. Operators can extend this
+          # with additional default hostnames via UPTIMER_DEFAULT_HOSTS_OVERRIDE.
+          pages_domain="${PAGES_PROJECT}.pages.dev"
+          default_hosts="${UPTIMER_DEFAULT_HOSTS_OVERRIDE:-$pages_domain}"
+
+          if [[ -z "$default_hosts" ]]; then
+            echo "Skipping UPTIMER_DEFAULT_HOSTS: could not derive Pages hostname"
+            exit 0
+          fi
+
+          printf %s "$default_hosts" | pnpm -C apps/worker exec wrangler --cwd ../.. pages secret put UPTIMER_DEFAULT_HOSTS --project-name "$PAGES_PROJECT"
+
       - name: Deploy Pages (idempotent)
         shell: bash
         run: |

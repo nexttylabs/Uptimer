@@ -44,6 +44,7 @@ export function StatusPageForm(props: CreateProps | EditProps) {
   const [name, setName] = useState(page?.name ?? '');
   const [title, setTitle] = useState(page?.title ?? '');
   const [description, setDescription] = useState(page?.description ?? '');
+  const [customHostname, setCustomHostname] = useState(page?.custom_hostname ?? '');
   const [isPublic, setIsPublic] = useState(page?.is_public ?? true);
   const [selectedMonitorIds, setSelectedMonitorIds] = useState<number[]>(
     page?.monitor_ids ?? [],
@@ -76,6 +77,7 @@ export function StatusPageForm(props: CreateProps | EditProps) {
     const trimmedSlug = slug.trim();
     const trimmedDescription = description.trim().slice(0, 500);
     const monitorIds = [...new Set(selectedMonitorIds)];
+    const trimmedHostname = customHostname.trim();
 
     if (page) {
       const data: PatchStatusPageInput = {
@@ -84,6 +86,7 @@ export function StatusPageForm(props: CreateProps | EditProps) {
         title: title.trim(),
         description: trimmedDescription,
         is_public: isPublic,
+        custom_hostname: trimmedHostname === '' ? null : trimmedHostname,
         monitor_ids: monitorIds,
       };
       props.onSubmit(data);
@@ -96,6 +99,7 @@ export function StatusPageForm(props: CreateProps | EditProps) {
       title: title.trim(),
       description: trimmedDescription,
       is_public: isPublic,
+      custom_hostname: trimmedHostname === '' ? null : trimmedHostname,
       monitor_ids: monitorIds,
     };
     props.onSubmit(data);
@@ -155,6 +159,24 @@ export function StatusPageForm(props: CreateProps | EditProps) {
           placeholder={t('status_page_form.description_placeholder')}
         />
         <div className={FIELD_HELP_CLASS}>{t('status_page_form.description_help')}</div>
+      </div>
+
+      <div>
+        <label className={FIELD_LABEL_CLASS}>{t('status_page_form.custom_hostname')}</label>
+        <input
+          value={customHostname}
+          onChange={(e) => setCustomHostname(e.target.value)}
+          className={INPUT_CLASS}
+          placeholder={t('status_page_form.custom_hostname_placeholder')}
+          autoComplete="off"
+          spellCheck={false}
+        />
+        <div className={FIELD_HELP_CLASS}>{t('status_page_form.custom_hostname_help')}</div>
+        {customHostname.trim() && (
+          <div className={FIELD_HELP_CLASS}>
+            {t('status_page_form.custom_hostname_result')}: https://{customHostname.trim().toLowerCase()}/
+          </div>
+        )}
       </div>
 
       <label className="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">

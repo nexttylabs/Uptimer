@@ -4,7 +4,7 @@ import { createBrowserRouter, useParams } from 'react-router-dom';
 import { StatusPage } from '../pages/StatusPage';
 import { ADMIN_ANALYTICS_PATH, ADMIN_LOGIN_PATH, ADMIN_PATH } from './adminPaths';
 import { ProtectedRoute } from './ProtectedRoute';
-import { StatusPageSlugContext, type StatusPageSlug } from './StatusPageSlugContext';
+import { StatusPageSlugContext, type StatusPageSlug, bootstrapStatusPageSlug } from './StatusPageSlugContext';
 
 const AdminDashboard = lazy(async () => {
   const mod = await import('../pages/AdminDashboard');
@@ -37,7 +37,7 @@ function PageFallback() {
 
 function StatusPageRoute() {
   const { slug } = useParams<{ slug: string }>();
-  const normalizedSlug: StatusPageSlug = slug ?? undefined;
+  const normalizedSlug: StatusPageSlug = slug ?? bootstrapStatusPageSlug();
   return (
     <StatusPageSlugContext.Provider value={normalizedSlug}>
       <StatusPage />

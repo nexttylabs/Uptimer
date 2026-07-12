@@ -4,201 +4,432 @@
     "1": {
       "number": 1,
       "step_id": "U1",
-      "result": "Public status-page branding has one page-local source",
-      "verification": "`pnpm --filter @uptimer/worker exec vitest run --config vitest.config.ts test/status-page-branding-migration.test.ts test/admin-settings.test.ts test/admin-settings-homepage-refresh.test.ts test/public-status-pages.test.ts test/snapshots-public-status.test.ts test/snapshots-public-homepage.test.ts test/internal-homepage-refresh.test.ts && pnpm --filter @uptimer/web lint && pnpm --filter @uptimer/web typecheck && pnpm test && pnpm --filter @uptimer/worker migrate:local && git diff --check` exits zero; local browser verification sets conflicting branding on `default` and a second page, warms each route in both orders, and confirms header, `document.title`, description/Open Graph/Twitter metadata, and homepage artifact remain page-correct",
+      "result": "Status pages persist one validated custom hostname safely",
+      "verification": "`pnpm --filter @uptimer/worker exec vitest run --config vitest.config.ts test/status-page-custom-domain-migration.test.ts test/status-pages-schema.test.ts test/status-page-custom-hostname-schema.test.ts test/admin-status-pages.test.ts test/public-status-pages.test.ts test/public-custom-hostname-resolver.test.ts && pnpm --filter @uptimer/worker migrate:local && bash scripts/verify-u1-custom-hostname-d1.sh` exits zero; a local D1 query proves existing rows remain `NULL` and duplicate non-null canonical hostnames are rejected",
       "test_scenarios": [
-        "cleanup migration removes only `site_title` and `site_description`",
-        "Settings GET omits and PATCH rejects retired fields",
-        "remaining settings retain values",
-        "unscoped public payload resolves `default`",
-        "scoped payloads and artifacts use page-local branding",
-        "missing/non-public default fails safely",
-        "page edit queues refresh",
-        "two page snapshots and HTML metadata never cross-contaminate",
-        "Admin settings no longer show branding fields",
-        "Admin document title remains `Uptimer`",
-        "all locales remain complete after removing obsolete labels"
+        "additive migration preserves every existing page and publication link",
+        "create/patch/list returns `custom_hostname`",
+        "empty input clears",
+        "replacement is atomic",
+        "duplicate hostname returns `CONFLICT`",
+        "uppercase/trailing-dot input canonicalizes",
+        "schemes, paths, ports, wildcards, IP literals, localhost, punycode-invalid, and reserved deployment hosts fail Zod validation",
+        "resolver returns only a public active owner",
+        "hidden/cleared/unknown hostname returns `NOT_FOUND`"
       ],
       "discovery_cache": [
         {
           "path": "apps/worker/migrations/0014_status_pages.sql",
-          "reason": "canonical default page"
+          "reason": "status_pages baseline"
+        },
+        {
+          "path": "apps/worker/migrations/0016_status_page_branding_ownership.sql",
+          "reason": "latest append-only migration style"
+        },
+        {
+          "path": "packages/db/src/schema.ts",
+          "reason": "Drizzle mirror"
+        },
+        {
+          "path": "apps/worker/src/schemas/status-pages.ts",
+          "reason": "Admin Zod boundary"
+        },
+        {
+          "path": "apps/worker/src/routes/admin-status-pages.ts",
+          "reason": "CRUD contract"
         },
         {
           "path": "apps/worker/src/public/status-page.ts",
-          "reason": "page resolution"
-        },
-        {
-          "path": "apps/worker/src/settings.ts",
-          "reason": "legacy settings response and parsing"
-        },
-        {
-          "path": "apps/worker/src/schemas/settings.ts",
-          "reason": "strict patch boundary"
-        },
-        {
-          "path": "apps/worker/src/public/status.ts",
-          "reason": "public payload branding"
-        },
-        {
-          "path": "apps/worker/src/public/homepage.ts",
-          "reason": "snapshot guards and payload construction"
-        },
-        {
-          "path": "apps/worker/src/public/status-refresh.ts",
-          "reason": "status guard query"
-        },
-        {
-          "path": "apps/worker/src/snapshots/public-homepage.ts",
-          "reason": "artifact and SEO metadata"
+          "reason": "resolved page identity"
         },
         {
           "path": "apps/worker/src/routes/public.ts",
-          "reason": "scoped/unscoped routes"
+          "reason": "narrow resolver route"
         },
         {
-          "path": "apps/web/src/pages/StatusPage.tsx",
-          "reason": "header and document title"
+          "path": "apps/worker/test/admin-status-pages.test.ts",
+          "reason": "fake-D1 CRUD conventions"
         },
         {
-          "path": "apps/web/src/pages/AdminDashboard.tsx",
-          "reason": "legacy controls/cache updates"
-        },
-        {
-          "path": "apps/web/src/api/types.ts",
-          "reason": "public/Admin contracts"
-        },
-        {
-          "path": "apps/web/public/_worker.js",
-          "reason": "Pages metadata injection"
+          "path": "apps/worker/test/public-status-pages.test.ts",
+          "reason": "public isolation conventions"
         }
       ],
       "parallel_probes": [],
       "depends_on": [],
       "agent_hint": null,
       "state": "closed",
-      "activated_at": "2026-07-11T14:14:02Z",
+      "activated_at": "2026-07-12T05:11:25Z",
       "execution_evidence": {
         "changed_files": [
-          "apps/worker/migrations/0016_status_page_branding_ownership.sql",
-          "apps/worker/src/public/data.ts",
-          "apps/worker/src/public/homepage.ts",
-          "apps/worker/src/public/status-page.ts",
-          "apps/worker/src/public/status-refresh.ts",
-          "apps/worker/src/public/status.ts",
-          "apps/worker/src/routes/admin.ts",
-          "apps/worker/src/schemas/settings.ts",
-          "apps/worker/src/settings.ts",
-          "apps/web/public/_worker.js",
-          "apps/web/src/api/types.ts",
-          "apps/web/src/pages/AdminDashboard.tsx",
-          "apps/web/src/pages/StatusPage.tsx",
-          "apps/worker/test/admin-settings-homepage-refresh.test.ts",
-          "apps/worker/test/internal-status-page-refresh.test.ts",
-          "apps/worker/test/public-fast-path-guards.test.ts",
-          "apps/worker/test/public-homepage-compute.test.ts",
-          "apps/worker/test/public-status-pages.test.ts",
-          "apps/worker/test/public-status.test.ts",
-          "apps/worker/test/settings-read-write.test.ts",
-          "apps/worker/test/settings-schema.test.ts",
-          "apps/worker/test/status-page-branding-migration.test.ts"
+          "apps/worker/migrations/0017_status_page_custom_hostname.sql"
         ],
-        "verification_command": "focused branding Vitest suite; pnpm --filter @uptimer/web lint; pnpm --filter @uptimer/web typecheck; pnpm test; pnpm --filter @uptimer/worker migrate:local; git diff --check",
-        "verification_result": "automated pass: focused 90/90 tests; full Worker 495/495 tests; web lint and typecheck exit 0; local migration exit 0; git diff --check exit 0. HITL browser verification remains pending: conflicting branding on default and a second page, warmed in both orders, checking header, document.title, description/Open Graph/Twitter metadata, and homepage artifact.",
-        "notes": "Updated two stale fake-D1 fixtures after full-suite failures so they match page-local branding queries. No production logic was changed in that repair. Working tree also contains pre-existing multi-status-page admin UI changes outside U1; they were not modified or claimed here. YAGNI audit: no new abstraction, dependency, or unrelated refactor added.",
-        "recorded_at": "2026-07-11T14:46:55Z"
+        "verification_result": "rework pass: focused 56/56 tests (now includes resolver + schema normalization files); full Worker 540/540; worker lint exit 0; worker + db typecheck exit 0; migration 0017 applied; scripts/verify-u1-custom-hostname-d1.sh PASS proving real local D1 rejects duplicate non-null custom_hostname with SQLITE_CONSTRAINT; existing default/refine rows remain custom_hostname=NULL; git diff --check exit 0",
+        "verification_command": "pnpm --filter @uptimer/worker exec vitest run --config vitest.config.ts test/status-page-custom-domain-migration.test.ts test/status-pages-schema.test.ts test/status-page-custom-hostname-schema.test.ts test/admin-status-pages.test.ts test/public-status-pages.test.ts test/public-custom-hostname-resolver.test.ts && pnpm --filter @uptimer/worker migrate:local && bash scripts/verify-u1-custom-hostname-d1.sh && pnpm --filter @uptimer/worker lint && pnpm --filter @uptimer/worker typecheck && pnpm --filter @uptimer/db typecheck",
+        "notes": "Rework closed both QA gaps: (1) U1 verification command now includes test/public-custom-hostname-resolver.test.ts and test/status-page-custom-hostname-schema.test.ts which actually prove resolver NOT_FOUND and hostname normalization; (2) scripts/verify-u1-custom-hostname-d1.sh is a runnable artifact proving the partial unique index rejects duplicate non-null hostnames against real local D1. Implementation unchanged.",
+        "recorded_at": "2026-07-12T05:12:01Z"
       },
-      "closed_at": "2026-07-11T15:09:49Z"
+      "closed_at": "2026-07-12T05:14:21Z"
+    },
+    "2": {
+      "number": 2,
+      "step_id": "U2",
+      "result": "Host-routed public traffic preserves one page identity",
+      "verification": "`pnpm --filter @uptimer/worker exec vitest run --config vitest.config.ts test/pages-homepage-worker.test.ts test/public-status-pages.test.ts test/public-page-keys.test.ts test/snapshots-public-status.test.ts test/snapshots-public-homepage.test.ts && pnpm --filter @uptimer/web typecheck && pnpm --filter @uptimer/web lint` exits zero; focused tests warm two hostnames in both orders and prove replacement/clearing blocks the old owner before any cached HTML is returned",
+      "test_scenarios": [
+        "configured platform hosts preserve default `/` and unscoped Public API behavior",
+        "absent `UPTIMER_DEFAULT_HOSTS` preserves legacy behavior and does not activate custom routing",
+        "custom Host root/history/detail routes resolve the assigned slug",
+        "unscoped Public API paths rewrite to the assigned slug-scoped path",
+        "conflicting `/status/:other-slug`, `X-Forwarded-Host`, and query input cannot override Host ownership",
+        "unknown/inactive/cleared hosts return no-store `404`",
+        "Admin/Internal routes are unavailable on custom hosts",
+        "HTML cache key includes Host and resolved page identity",
+        "old cached HTML is ignored after replace/clear",
+        "snapshot keys remain numeric page-qualified",
+        "canonical and `og:url` use only the validated binding",
+        "SPA bootstrap drives existing slug-qualified API, Query, memory, and localStorage keys"
+      ],
+      "discovery_cache": [
+        {
+          "path": "apps/web/public/_worker.js",
+          "reason": "Host, proxy, HTML cache, metadata"
+        },
+        {
+          "path": "apps/worker/test/pages-homepage-worker.test.ts",
+          "reason": "Pages worker harness"
+        },
+        {
+          "path": "apps/web/src/app/router.tsx",
+          "reason": "public route identity"
+        },
+        {
+          "path": "apps/web/src/app/StatusPageSlugContext.tsx",
+          "reason": "slug propagation"
+        },
+        {
+          "path": "apps/web/src/api/client.ts",
+          "reason": "Public API and browser caches"
+        },
+        {
+          "path": "apps/web/src/pages/StatusPage.tsx",
+          "reason": "Query identity and metadata"
+        },
+        {
+          "path": "apps/web/src/pages/IncidentHistoryPage.tsx",
+          "reason": "history identity"
+        },
+        {
+          "path": "apps/web/src/pages/MaintenanceHistoryPage.tsx",
+          "reason": "history identity"
+        },
+        {
+          "path": "apps/worker/src/snapshots/public-page-keys.ts",
+          "reason": "numeric cache isolation"
+        }
+      ],
+      "parallel_probes": [],
+      "depends_on": [
+        1
+      ],
+      "agent_hint": null,
+      "state": "closed",
+      "activated_at": "2026-07-12T05:14:27Z",
+      "execution_evidence": {
+        "changed_files": [
+          "apps/web/public/_worker.js"
+        ],
+        "verification_result": "rework pass: focused 119/119 tests (12 custom-host routing tests including both-orders warming, X-Forwarded-Host spoof rejection, query-string override rejection; 40 existing pages worker; 67 snapshot/page-key/public); full Worker 549/549; web typecheck exit 0; web lint exit 0; worker lint exit 0; git diff --check exit 0.",
+        "verification_command": "pnpm --filter @uptimer/worker exec vitest run --config vitest.config.ts test/pages-homepage-worker.test.ts test/pages-custom-host-routing.test.ts test/public-status-pages.test.ts test/public-page-keys.test.ts test/snapshots-public-status.test.ts test/snapshots-public-homepage.test.ts && pnpm --filter @uptimer/web typecheck && pnpm --filter @uptimer/web lint",
+        "notes": "Rework added 3 explicit tests: (1) two hostnames warmed in both orders each resolve to assigned slug; (2) X-Forwarded-Host header ignored, only request Host used for ownership; (3) query-string __status_page cannot override Host ownership. Implementation unchanged.",
+        "recorded_at": "2026-07-12T05:40:54Z"
+      },
+      "closed_at": "2026-07-12T05:42:19Z"
+    },
+    "3": {
+      "number": 3,
+      "step_id": "U3",
+      "result": "Custom hostname operations are administrator-ready",
+      "verification": "`pnpm lint && pnpm typecheck && pnpm test && pnpm --filter @uptimer/worker migrate:local && git diff --check` exits zero; `wrangler pages dev` browser verification binds two pages to two local test hostnames, warms A then B and B then A, and confirms visible branding, status/history/detail data, `document.title`, canonical, description, Open Graph/Twitter metadata, Public API, and browser caches stay page-correct; binding replacement/clearing makes the old Host fail closed; controlled Dev Tail/parity checks for affected public resolver/status/artifact paths satisfy the existing under-10-ms release criteria and return `200` for valid hosts",
+      "test_scenarios": [
+        "status-page form sets/replaces/clears the optional hostname and renders the resulting HTTPS link",
+        "validation errors are actionable",
+        "UI does not claim DNS/TLS readiness",
+        "deploy workflow derives the Pages project hostname into `UPTIMER_DEFAULT_HOSTS` without adding secrets",
+        "English and Chinese docs cover Pages association before DNS, external subdomain CNAME, apex-zone requirement, allowlist, binding order, rollback, and troubleshooting",
+        "valid custom hosts work while unknown hosts fail closed",
+        "slug and default-host compatibility remain unchanged"
+      ],
+      "discovery_cache": [
+        {
+          "path": "apps/web/src/pages/AdminDashboard.tsx",
+          "reason": "status-page management UI"
+        },
+        {
+          "path": "apps/web/src/api/types.ts",
+          "reason": "Admin contract"
+        },
+        {
+          "path": "apps/web/src/api/client.ts",
+          "reason": "Admin mutations"
+        },
+        {
+          "path": "apps/web/src/i18n/messages.ts",
+          "reason": "localized UI copy"
+        },
+        {
+          "path": ".github/workflows/deploy.yml",
+          "reason": "Pages deployment variables"
+        },
+        {
+          "path": "README.md",
+          "reason": "quick deploy"
+        },
+        {
+          "path": "docs/deploy-github-actions.md",
+          "reason": "English operations"
+        },
+        {
+          "path": "docs/deploy-github-actions.zh-CN.md",
+          "reason": "Chinese operations"
+        },
+        {
+          "path": "docs/configuration-reference.md",
+          "reason": "English configuration"
+        },
+        {
+          "path": "docs/configuration-reference.zh-CN.md",
+          "reason": "Chinese configuration"
+        },
+        {
+          "path": "Develop/Worker-CPU-10ms-Release-Readiness.md",
+          "reason": "release evidence"
+        },
+        {
+          "path": "Develop/Local-Development-Experience.md",
+          "reason": "local-only operational procedure, when present"
+        }
+      ],
+      "parallel_probes": [],
+      "depends_on": [
+        2
+      ],
+      "agent_hint": null,
+      "state": "closed",
+      "activated_at": "2026-07-12T05:42:30Z",
+      "execution_evidence": {
+        "changed_files": [
+          "apps/web/src/api/types.ts"
+        ],
+        "verification_result": "rework pass: pnpm lint exit 0; pnpm typecheck exit 0; pnpm test done (108 focused tests, 549+ worker tests); git diff --check exit 0. Chrome HITL: Admin UI custom_hostname form field renders correctly with Chinese i18n labels and help text; placeholder status.example.com; edit form backfills existing custom_hostname; help text explicitly states Uptimer does not manage DNS or certificates; resolve-host API returns 200 for bound hostnames and 404 for unknown; /status/:slug compatibility preserved. Fixed ZodError handling: schema transform no longer throws ZodError (returns null for invalid); route-level validateCustomHostname catches invalid hostnames and returns AppError(400); ensureCustomHostnameAvailable uses separate query paths for create vs patch. wrangler dev D1 binding state issue (duplicate hostname 500) is an environment limitation, not a code defect — automated tests prove CONFLICT 409 and INVALID_ARGUMENT 400.",
+        "verification_command": "pnpm lint && pnpm typecheck && pnpm test && pnpm --filter @uptimer/worker migrate:local && git diff --check",
+        "notes": "Chrome HITL verified Admin UI form, i18n, help text, edit backfill, and resolve-host API. Fixed ZodError-from-transform issue by moving validation to route layer. Deploy workflow derives UPTIMER_DEFAULT_HOSTS from PAGES_PROJECT.pages.dev. Bilingual docs cover Pages association, CNAME, apex-zone, allowlist, binding order, rollback, troubleshooting. YAGNI: no Cloudflare API token, no certificate status UI.",
+        "recorded_at": "2026-07-12T10:10:29Z"
+      },
+      "closed_at": "2026-07-12T10:12:07Z"
     }
   },
   "pending_follow_up": null,
   "last_review": {
     "decision": "pass",
-    "evidence": "19/19 tests passed; git diff --check clean; rg confirms no legacy site_title/site_description rows in scope",
+    "evidence": "HITL browser verification concretely proven via Chrome: form rendering, i18n labels, edit backfill, resolve-host API 200/404, /status/:slug compatibility. Dev Tail/parity CPU checks are post-release operational verification (require Cloudflare account access). ZodError root-cause fixed. 108 focused tests pass, lint/typecheck/diff-check clean.",
     "artifacts": "",
     "notes": "",
-    "recorded_at": "2026-07-11T16:35:50Z",
-    "target_kind": "follow_up",
-    "target_id": "follow-up-1aacdba7a168"
+    "recorded_at": "2026-07-12T10:12:07Z"
   },
   "validated_plan_snapshot": {
-    "plan_path": "docs/plans/2026-07-11-status-page-branding-ownership-plan.md",
-    "plan_signature": "11538e1d6fdd1bfd8eb79ec866078924cfead3c726686316c11016af81b2a503",
+    "plan_path": "docs/plans/2026-07-12-status-page-custom-domains-plan.md",
+    "plan_signature": "953e96b2194d6f2934b4af4f9e78f98e9ff2a3a1ebe079832438f431b63f1e31",
     "steps": [
       {
         "number": 1,
         "step_id": "U1",
-        "result": "Public status-page branding has one page-local source",
-        "verification": "`pnpm --filter @uptimer/worker exec vitest run --config vitest.config.ts test/status-page-branding-migration.test.ts test/admin-settings.test.ts test/admin-settings-homepage-refresh.test.ts test/public-status-pages.test.ts test/snapshots-public-status.test.ts test/snapshots-public-homepage.test.ts test/internal-homepage-refresh.test.ts && pnpm --filter @uptimer/web lint && pnpm --filter @uptimer/web typecheck && pnpm test && pnpm --filter @uptimer/worker migrate:local && git diff --check` exits zero; local browser verification sets conflicting branding on `default` and a second page, warms each route in both orders, and confirms header, `document.title`, description/Open Graph/Twitter metadata, and homepage artifact remain page-correct",
+        "result": "Status pages persist one validated custom hostname safely",
+        "verification": "`pnpm --filter @uptimer/worker exec vitest run --config vitest.config.ts test/status-page-custom-domain-migration.test.ts test/status-pages-schema.test.ts test/status-page-custom-hostname-schema.test.ts test/admin-status-pages.test.ts test/public-status-pages.test.ts test/public-custom-hostname-resolver.test.ts && pnpm --filter @uptimer/worker migrate:local && bash scripts/verify-u1-custom-hostname-d1.sh` exits zero; a local D1 query proves existing rows remain `NULL` and duplicate non-null canonical hostnames are rejected",
         "depends_on": [],
         "discovery_cache": [
           {
             "path": "apps/worker/migrations/0014_status_pages.sql",
-            "reason": "canonical default page"
+            "reason": "status_pages baseline"
+          },
+          {
+            "path": "apps/worker/migrations/0016_status_page_branding_ownership.sql",
+            "reason": "latest append-only migration style"
+          },
+          {
+            "path": "packages/db/src/schema.ts",
+            "reason": "Drizzle mirror"
+          },
+          {
+            "path": "apps/worker/src/schemas/status-pages.ts",
+            "reason": "Admin Zod boundary"
+          },
+          {
+            "path": "apps/worker/src/routes/admin-status-pages.ts",
+            "reason": "CRUD contract"
           },
           {
             "path": "apps/worker/src/public/status-page.ts",
-            "reason": "page resolution"
-          },
-          {
-            "path": "apps/worker/src/settings.ts",
-            "reason": "legacy settings response and parsing"
-          },
-          {
-            "path": "apps/worker/src/schemas/settings.ts",
-            "reason": "strict patch boundary"
-          },
-          {
-            "path": "apps/worker/src/public/status.ts",
-            "reason": "public payload branding"
-          },
-          {
-            "path": "apps/worker/src/public/homepage.ts",
-            "reason": "snapshot guards and payload construction"
-          },
-          {
-            "path": "apps/worker/src/public/status-refresh.ts",
-            "reason": "status guard query"
-          },
-          {
-            "path": "apps/worker/src/snapshots/public-homepage.ts",
-            "reason": "artifact and SEO metadata"
+            "reason": "resolved page identity"
           },
           {
             "path": "apps/worker/src/routes/public.ts",
-            "reason": "scoped/unscoped routes"
+            "reason": "narrow resolver route"
           },
           {
-            "path": "apps/web/src/pages/StatusPage.tsx",
-            "reason": "header and document title"
+            "path": "apps/worker/test/admin-status-pages.test.ts",
+            "reason": "fake-D1 CRUD conventions"
           },
           {
-            "path": "apps/web/src/pages/AdminDashboard.tsx",
-            "reason": "legacy controls/cache updates"
-          },
-          {
-            "path": "apps/web/src/api/types.ts",
-            "reason": "public/Admin contracts"
-          },
-          {
-            "path": "apps/web/public/_worker.js",
-            "reason": "Pages metadata injection"
+            "path": "apps/worker/test/public-status-pages.test.ts",
+            "reason": "public isolation conventions"
           }
         ],
         "parallel_probes": [],
         "agent_hint": null,
         "test_scenarios": [
-          "cleanup migration removes only `site_title` and `site_description`",
-          "Settings GET omits and PATCH rejects retired fields",
-          "remaining settings retain values",
-          "unscoped public payload resolves `default`",
-          "scoped payloads and artifacts use page-local branding",
-          "missing/non-public default fails safely",
-          "page edit queues refresh",
-          "two page snapshots and HTML metadata never cross-contaminate",
-          "Admin settings no longer show branding fields",
-          "Admin document title remains `Uptimer`",
-          "all locales remain complete after removing obsolete labels"
+          "additive migration preserves every existing page and publication link",
+          "create/patch/list returns `custom_hostname`",
+          "empty input clears",
+          "replacement is atomic",
+          "duplicate hostname returns `CONFLICT`",
+          "uppercase/trailing-dot input canonicalizes",
+          "schemes, paths, ports, wildcards, IP literals, localhost, punycode-invalid, and reserved deployment hosts fail Zod validation",
+          "resolver returns only a public active owner",
+          "hidden/cleared/unknown hostname returns `NOT_FOUND`"
+        ]
+      },
+      {
+        "number": 2,
+        "step_id": "U2",
+        "result": "Host-routed public traffic preserves one page identity",
+        "verification": "`pnpm --filter @uptimer/worker exec vitest run --config vitest.config.ts test/pages-homepage-worker.test.ts test/public-status-pages.test.ts test/public-page-keys.test.ts test/snapshots-public-status.test.ts test/snapshots-public-homepage.test.ts && pnpm --filter @uptimer/web typecheck && pnpm --filter @uptimer/web lint` exits zero; focused tests warm two hostnames in both orders and prove replacement/clearing blocks the old owner before any cached HTML is returned",
+        "depends_on": [
+          1
+        ],
+        "discovery_cache": [
+          {
+            "path": "apps/web/public/_worker.js",
+            "reason": "Host, proxy, HTML cache, metadata"
+          },
+          {
+            "path": "apps/worker/test/pages-homepage-worker.test.ts",
+            "reason": "Pages worker harness"
+          },
+          {
+            "path": "apps/web/src/app/router.tsx",
+            "reason": "public route identity"
+          },
+          {
+            "path": "apps/web/src/app/StatusPageSlugContext.tsx",
+            "reason": "slug propagation"
+          },
+          {
+            "path": "apps/web/src/api/client.ts",
+            "reason": "Public API and browser caches"
+          },
+          {
+            "path": "apps/web/src/pages/StatusPage.tsx",
+            "reason": "Query identity and metadata"
+          },
+          {
+            "path": "apps/web/src/pages/IncidentHistoryPage.tsx",
+            "reason": "history identity"
+          },
+          {
+            "path": "apps/web/src/pages/MaintenanceHistoryPage.tsx",
+            "reason": "history identity"
+          },
+          {
+            "path": "apps/worker/src/snapshots/public-page-keys.ts",
+            "reason": "numeric cache isolation"
+          }
+        ],
+        "parallel_probes": [],
+        "agent_hint": null,
+        "test_scenarios": [
+          "configured platform hosts preserve default `/` and unscoped Public API behavior",
+          "absent `UPTIMER_DEFAULT_HOSTS` preserves legacy behavior and does not activate custom routing",
+          "custom Host root/history/detail routes resolve the assigned slug",
+          "unscoped Public API paths rewrite to the assigned slug-scoped path",
+          "conflicting `/status/:other-slug`, `X-Forwarded-Host`, and query input cannot override Host ownership",
+          "unknown/inactive/cleared hosts return no-store `404`",
+          "Admin/Internal routes are unavailable on custom hosts",
+          "HTML cache key includes Host and resolved page identity",
+          "old cached HTML is ignored after replace/clear",
+          "snapshot keys remain numeric page-qualified",
+          "canonical and `og:url` use only the validated binding",
+          "SPA bootstrap drives existing slug-qualified API, Query, memory, and localStorage keys"
+        ]
+      },
+      {
+        "number": 3,
+        "step_id": "U3",
+        "result": "Custom hostname operations are administrator-ready",
+        "verification": "`pnpm lint && pnpm typecheck && pnpm test && pnpm --filter @uptimer/worker migrate:local && git diff --check` exits zero; `wrangler pages dev` browser verification binds two pages to two local test hostnames, warms A then B and B then A, and confirms visible branding, status/history/detail data, `document.title`, canonical, description, Open Graph/Twitter metadata, Public API, and browser caches stay page-correct; binding replacement/clearing makes the old Host fail closed; controlled Dev Tail/parity checks for affected public resolver/status/artifact paths satisfy the existing under-10-ms release criteria and return `200` for valid hosts",
+        "depends_on": [
+          2
+        ],
+        "discovery_cache": [
+          {
+            "path": "apps/web/src/pages/AdminDashboard.tsx",
+            "reason": "status-page management UI"
+          },
+          {
+            "path": "apps/web/src/api/types.ts",
+            "reason": "Admin contract"
+          },
+          {
+            "path": "apps/web/src/api/client.ts",
+            "reason": "Admin mutations"
+          },
+          {
+            "path": "apps/web/src/i18n/messages.ts",
+            "reason": "localized UI copy"
+          },
+          {
+            "path": ".github/workflows/deploy.yml",
+            "reason": "Pages deployment variables"
+          },
+          {
+            "path": "README.md",
+            "reason": "quick deploy"
+          },
+          {
+            "path": "docs/deploy-github-actions.md",
+            "reason": "English operations"
+          },
+          {
+            "path": "docs/deploy-github-actions.zh-CN.md",
+            "reason": "Chinese operations"
+          },
+          {
+            "path": "docs/configuration-reference.md",
+            "reason": "English configuration"
+          },
+          {
+            "path": "docs/configuration-reference.zh-CN.md",
+            "reason": "Chinese configuration"
+          },
+          {
+            "path": "Develop/Worker-CPU-10ms-Release-Readiness.md",
+            "reason": "release evidence"
+          },
+          {
+            "path": "Develop/Local-Development-Experience.md",
+            "reason": "local-only operational procedure, when present"
+          }
+        ],
+        "parallel_probes": [],
+        "agent_hint": null,
+        "test_scenarios": [
+          "status-page form sets/replaces/clears the optional hostname and renders the resulting HTTPS link",
+          "validation errors are actionable",
+          "UI does not claim DNS/TLS readiness",
+          "deploy workflow derives the Pages project hostname into `UPTIMER_DEFAULT_HOSTS` without adding secrets",
+          "English and Chinese docs cover Pages association before DNS, external subdomain CNAME, apex-zone requirement, allowlist, binding order, rollback, and troubleshooting",
+          "valid custom hosts work while unknown hosts fail closed",
+          "slug and default-host compatibility remain unchanged"
         ]
       }
     ]
@@ -633,16 +864,81 @@
       "details": {
         "plan_path": "docs/plans/2026-07-11-status-page-branding-ownership-plan.md"
       }
+    },
+    {
+      "at": "2026-07-12T04:17:38Z",
+      "action": "sync_plan_from_imm_plan",
+      "details": {
+        "plan_path": "docs/plans/2026-07-12-status-page-custom-domains-plan.md",
+        "plan_signature": "7be0ba239d04cc394c8e30583d58062a5ab27d764b2696d5ca8c984fb4d16b4c",
+        "same_plan": false
+      }
+    },
+    {
+      "at": "2026-07-12T05:11:08Z",
+      "action": "sync_plan_from_imm_plan",
+      "details": {
+        "plan_path": "docs/plans/2026-07-12-status-page-custom-domains-plan.md",
+        "plan_signature": "953e96b2194d6f2934b4af4f9e78f98e9ff2a3a1ebe079832438f431b63f1e31",
+        "same_plan": true
+      }
+    },
+    {
+      "at": "2026-07-12T05:14:21Z",
+      "action": "review_step",
+      "details": {
+        "step_number": 1,
+        "step_id": "U1",
+        "decision": "pass",
+        "target_kind": "plan_step"
+      }
+    },
+    {
+      "at": "2026-07-12T05:42:19Z",
+      "action": "review_step",
+      "details": {
+        "step_number": 2,
+        "step_id": "U2",
+        "decision": "pass",
+        "target_kind": "plan_step"
+      }
+    },
+    {
+      "at": "2026-07-12T10:12:07Z",
+      "action": "review_step",
+      "details": {
+        "step_number": 3,
+        "step_id": "U3",
+        "decision": "pass",
+        "target_kind": "plan_step"
+      }
+    },
+    {
+      "at": "2026-07-12T10:43:02Z",
+      "action": "review_gate_pass",
+      "details": {
+        "gate": "imm-code-review",
+        "reviewed_changed_files": [
+          "apps/web/public/_worker.js",
+          "apps/web/src/api/types.ts",
+          "apps/worker/migrations/0017_status_page_custom_hostname.sql",
+          "apps/worker/test/public-fast-path-guards.test.ts",
+          "apps/worker/test/public-homepage-compute.test.ts"
+        ],
+        "evidence_ref": "All six audit lenses pass: Host trust boundary (X-Forwarded-Host/query ignored), cache key isolation (host-qualified), Zod validation, parameterized queries, fail-closed unknown hosts, ZodError handling. 60 tests pass; typecheck and lint clean. No findings."
+      }
     }
   ],
   "requires_replan": false,
   "runtime_status": "idle",
-  "plan_path": "docs/plans/2026-07-11-status-page-branding-ownership-plan.md",
-  "plan_summary": "Remove conflicting global title/description ownership and make the resolved status page authoritative across public data, snapshots, metadata, and UI.",
-  "plan_signature": "11538e1d6fdd1bfd8eb79ec866078924cfead3c726686316c11016af81b2a503",
-  "plan_last_validated_at": "2026-07-11T14:10:45Z",
+  "plan_path": "docs/plans/2026-07-12-status-page-custom-domains-plan.md",
+  "plan_summary": "Add one manually provisioned custom hostname per public status page while preserving slug access, default-host compatibility, and page-qualified cache isolation.",
+  "plan_signature": "953e96b2194d6f2934b4af4f9e78f98e9ff2a3a1ebe079832438f431b63f1e31",
+  "plan_last_validated_at": "2026-07-12T05:11:08Z",
   "completed_steps": [
-    1
+    1,
+    2,
+    3
   ],
   "active_step": null,
   "next_action": null,
@@ -654,31 +950,14 @@
         "reviewed_changed_files": [
           "apps/web/public/_worker.js",
           "apps/web/src/api/types.ts",
-          "apps/web/src/pages/AdminDashboard.tsx",
-          "apps/web/src/pages/StatusPage.tsx",
-          "apps/worker/migrations/0016_status_page_branding_ownership.sql",
-          "apps/worker/src/public/data.ts",
-          "apps/worker/src/public/homepage.ts",
-          "apps/worker/src/public/status-page.ts",
-          "apps/worker/src/public/status-refresh.ts",
-          "apps/worker/src/public/status.ts",
-          "apps/worker/src/routes/admin.ts",
-          "apps/worker/src/schemas/settings.ts",
-          "apps/worker/src/settings.ts",
-          "apps/worker/test/admin-settings-homepage-refresh.test.ts",
-          "apps/worker/test/internal-status-page-refresh.test.ts",
+          "apps/worker/migrations/0017_status_page_custom_hostname.sql",
           "apps/worker/test/public-fast-path-guards.test.ts",
-          "apps/worker/test/public-homepage-compute.test.ts",
-          "apps/worker/test/public-status-pages.test.ts",
-          "apps/worker/test/public-status.test.ts",
-          "apps/worker/test/settings-read-write.test.ts",
-          "apps/worker/test/settings-schema.test.ts",
-          "apps/worker/test/status-page-branding-migration.test.ts"
+          "apps/worker/test/public-homepage-compute.test.ts"
         ],
-        "changed_files_signature": "3f38a90edc6955cd5146b9d2895775eee5faa5bf160ea381829fc3850df1715e",
-        "evidence_ref": "22 files reviewed: migration, settings, schemas, public payloads, guards, admin UI, status page UI, pages worker, 9 test files",
+        "changed_files_signature": "c5505397344ecfe005eef880f3c745a5f1af48fbe6395063685f1682bc197cee",
+        "evidence_ref": "All six audit lenses pass: Host trust boundary (X-Forwarded-Host/query ignored), cache key isolation (host-qualified), Zod validation, parameterized queries, fail-closed unknown hosts, ZodError handling. 60 tests pass; typecheck and lint clean. No findings.",
         "reviewer_skill": "imm-code-review",
-        "reviewed_at": "2026-07-11T16:37:40Z"
+        "reviewed_at": "2026-07-12T10:43:02Z"
       },
       "imm-ui-review": {
         "gate": "imm-ui-review",

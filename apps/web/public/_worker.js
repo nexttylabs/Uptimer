@@ -178,6 +178,113 @@ function isLocalApiHost(hostname) {
   );
 }
 
+const HOST_RESOLUTION_TIMEOUT_MS = 800;
+
+function normalizeHostname(hostname) {
+  return String(hostname || '').trim().toLowerCase().replace(/\.+$/, '');
+}
+
+// ponytail: null = legacy mode (UPTIMER_DEFAULT_HOSTS absent); empty Set = enabled but no platform hosts configured.
+function resolveDefaultHosts(env) {
+  const raw = typeof env?.UPTIMER_DEFAULT_HOSTS === 'string' ? env.UPTIMER_DEFAULT_HOSTS.trim() : '';
+  if (!raw) return null;
+  const hosts = raw.split(',').map((h) => normalizeHostname(h)).filter(Boolean);
+  return new Set(hosts);
+}
+
+function isLocalDevHost(hostname) {
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '[::1]' ||
+    hostname.endsWith('.localhost')
+  );
+}
+
+async function resolveHostOwnership(env, trace, hostname) {
+  const apiOrigin = resolveApiOrigin(env);
+  if (!apiOrigin) return null;
+
+  const resolveUrl = new URL('/api/v1/public/resolve-host', apiOrigin);
+  resolveUrl.searchParams.set('host', hostname);
+
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), HOST_RESOLUTION_TIMEOUT_MS);
+
+  try {
+    const headers = { Accept: 'application/json' };
+    if (trace) {
+      headers[TRACE_HEADER] = '1';
+      headers[TRACE_ID_HEADER] = trace.id;
+      if (trace.token) headers[TRACE_TOKEN_HEADER] = trace.token;
+      if (trace.mode) headers[TRACE_MODE_HEADER] = trace.mode;
+    }
+
+    const resp = trace
+      ? await trace.timeAsync('host_resolve_fetch', () =>
+          fetch(resolveUrl.toString(), { headers, signal: controller.signal }),
+        )
+      : await fetch(resolveUrl.toString(), { headers, signal: controller.signal });
+
+    if (trace) {
+      trace.setLabel('host_resolve_status', resp.status);
+    }
+
+    if (!resp.ok) return null;
+    const data = trace
+      ? await trace.timeAsync('host_resolve_json', () => resp.json())
+      : await resp.json();
+
+    if (!data || typeof data !== 'object') return null;
+    if (typeof data.slug !== 'string' || typeof data.id !== 'number') return null;
+
+    return {
+      id: data.id,
+      slug: data.slug,
+      name: typeof data.name === 'string' ? data.name : '',
+      title: typeof data.title === 'string' ? data.title : '',
+      description: typeof data.description === 'string' ? data.description : '',
+      custom_hostname: typeof data.custom_hostname === 'string' ? data.custom_hostname : hostname,
+    };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+async function resolveHostContext(env, url, trace) {
+  const defaultHosts = resolveDefaultHosts(env);
+  if (defaultHosts === null) return { mode: 'legacy' };
+
+  const hostname = normalizeHostname(url.hostname);
+  if (isLocalDevHost(hostname)) return { mode: 'platform' };
+  if (defaultHosts.has(hostname)) return { mode: 'platform' };
+
+  const page = await resolveHostOwnership(env, trace, hostname);
+  if (page) return { mode: 'custom', page };
+  return { mode: 'unknown' };
+}
+
+function rewriteApiPathForCustomHost(canonicalPath, slug) {
+  if (!canonicalPath.startsWith('/api/v1/public/')) return canonicalPath;
+  if (canonicalPath.includes('/status-pages/')) return canonicalPath;
+  if (canonicalPath === '/api/v1/public/resolve-host') return canonicalPath;
+  const rest = canonicalPath.slice('/api/v1/public/'.length);
+  if (!rest) return canonicalPath;
+  return `/api/v1/public/status-pages/${encodeURIComponent(slug)}/${rest}`;
+}
+
+function buildNoStoreResponse(status, code, message) {
+  return new Response(JSON.stringify({ error: { code, message } }), {
+    status,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+    },
+  });
+}
+
 function canForwardSensitiveHeaders(upstreamUrl, requestUrl, trustedSensitiveOriginUrl = null) {
   if (trustedSensitiveOriginUrl) {
     return upstreamUrl.origin === trustedSensitiveOriginUrl.origin;
@@ -720,15 +827,22 @@ function upsertHeadTag(html, pattern, tag) {
   return html.replace('</head>', `  ${tag}\n</head>`);
 }
 
-function injectStatusMetaTags(html, artifact, url) {
-  const siteTitle = normalizeSnapshotText(artifact?.meta_title, 'Uptimer');
-  const siteDescription = normalizeSnapshotText(
-    artifact?.meta_description,
-    'Real-time status and incident updates.',
-  )
-    .replace(/\s+/g, ' ')
-    .trim();
-  const pageUrl = new URL('/', url).toString();
+function injectStatusMetaTags(html, artifact, url, hostPageMeta) {
+  const siteTitle = hostPageMeta?.title
+    ? hostPageMeta.title
+    : normalizeSnapshotText(artifact?.meta_title, 'Uptimer');
+  const siteDescription = hostPageMeta?.description
+    ? hostPageMeta.description
+    : normalizeSnapshotText(
+        artifact?.meta_description,
+        'Real-time status and incident updates.',
+      )
+      .replace(/\s+/g, ' ')
+      .trim();
+  // Custom hosts use their own hostname as the canonical URL; slug pages use the request origin.
+  const pageUrl = hostPageMeta
+    ? new URL('/', url).toString()
+    : new URL('/', url).toString();
 
   const escapedTitle = escapeHtml(siteTitle);
   const escapedDescription = escapeHtml(siteDescription);
@@ -765,6 +879,11 @@ function injectStatusMetaTags(html, artifact, url) {
     injected,
     /<meta[^>]+property=["']og:url["'][^>]*>/i,
     `<meta property="og:url" content="${escapedUrl}" />`,
+  );
+  injected = upsertHeadTag(
+    injected,
+    /<link[^>]+rel=["']canonical["'][^>]*>/i,
+    `<link rel="canonical" href="${escapedUrl}" />`,
   );
   injected = upsertHeadTag(
     injected,
@@ -989,6 +1108,40 @@ export default {
     const trace = resolveTraceContext(request, env);
     const resolvedApiPath = resolveApiRequestPath(url.pathname);
 
+    // Resolve custom-host ownership before any cache/proxy decision.
+    // - legacy (UPTIMER_DEFAULT_HOSTS absent): all existing behavior unchanged.
+    // - platform host: existing default/unscoped behavior.
+    // - custom host: rewrite unscoped public API + serve page-qualified HTML.
+    // - unknown host: fail closed with no-store 404.
+    let hostContext = null;
+    const defaultHosts = resolveDefaultHosts(env);
+    if (defaultHosts !== null) {
+      hostContext = await resolveHostContext(env, url, trace);
+      if (hostContext.mode === 'unknown') {
+        if (trace) {
+          trace.setLabel('route', 'pages/custom-host');
+          trace.setLabel('host_mode', 'unknown');
+        }
+        return finalizeTraceResponse(
+          applyApiCorsHeaders(
+            applySensitiveProxyResponsePolicy(
+              buildNoStoreResponse(404, 'NOT_FOUND', 'Unknown host'),
+              request,
+            ),
+            request,
+            resolvedApiPath?.canonicalPathname ?? '/api/v1',
+          ),
+          trace,
+        );
+      }
+      if (trace) {
+        trace.setLabel('host_mode', hostContext.mode);
+        if (hostContext.page) {
+          trace.setLabel('host_page_slug', hostContext.page.slug);
+        }
+      }
+    }
+
     try {
       try {
         ctx.passThroughOnException?.();
@@ -1035,6 +1188,28 @@ export default {
             trace,
           );
         }
+        // Custom hosts cannot access Admin or Internal API routes.
+        if (hostContext && hostContext.mode === 'custom') {
+          const cp = resolvedApiPath.canonicalPathname;
+          if (cp.startsWith('/api/v1/admin') || cp.startsWith('/api/v1/internal')) {
+            return finalizeTraceResponse(
+              applyApiCorsHeaders(
+                applySensitiveProxyResponsePolicy(
+                  buildNoStoreResponse(404, 'NOT_FOUND', 'Not Found'),
+                  request,
+                ),
+                request,
+                cp,
+              ),
+              trace,
+            );
+          }
+          // Rewrite unscoped public API paths to slug-scoped equivalents.
+          const rewrittenPath = rewriteApiPathForCustomHost(cp, hostContext.page.slug);
+          if (rewrittenPath !== cp) {
+            return await proxyApiRequest(request, env, trace, rewrittenPath);
+          }
+        }
         if (resolvedApiPath.needsVersionRedirect) {
           const next = new URL(request.url);
           next.pathname = resolvedApiPath.canonicalPathname;
@@ -1056,17 +1231,46 @@ export default {
       // HTML requests: serve SPA entry for client-side routes.
       const wantsHtml = request.method === 'GET' && acceptsHtml(request);
 
+      // For custom hosts, the root and unscoped HTML routes serve the bound status page.
+      let hostSlug = null;
+      let hostPageMeta = null;
+      if (hostContext && hostContext.mode === 'custom') {
+        hostSlug = hostContext.page.slug;
+        hostPageMeta = hostContext.page;
+      }
+
       // Special-case the status page for HTML injection.
       const statusPageMatch = url.pathname.match(/^\/status\/([a-z0-9]+(?:-[a-z0-9]+)*)$/);
-      const isStatusPage = url.pathname === '/' || url.pathname === '/index.html' || statusPageMatch !== null;
+      // Custom hosts: root and /index.html serve the bound page; a conflicting /status/:other-slug is rejected.
+      let isStatusPage;
+      let slug;
+      if (hostSlug !== null) {
+        if (statusPageMatch && statusPageMatch[1] !== hostSlug) {
+          // Conflicting slug on a custom host: fail closed.
+          return finalizeTraceResponse(
+            applySensitiveProxyResponsePolicy(
+              buildNoStoreResponse(404, 'NOT_FOUND', 'Not Found'),
+              request,
+            ),
+            trace,
+          );
+        }
+        isStatusPage = url.pathname === '/' || url.pathname === '/index.html' || statusPageMatch !== null;
+        slug = hostSlug;
+      } else {
+        isStatusPage = url.pathname === '/' || url.pathname === '/index.html' || statusPageMatch !== null;
+        slug = statusPageMatch ? statusPageMatch[1] : null;
+      }
       if (wantsHtml && isStatusPage) {
-        const slug = statusPageMatch ? statusPageMatch[1] : null;
         const cachePath = slug ? `/status/${slug}` : '/';
+        // Custom hosts: qualify the HTML cache key with the normalized origin so
+        // page A's cached HTML cannot leak to page B.
+        const cacheKeyOrigin = hostSlug !== null ? `|host:${normalizeHostname(url.hostname)}` : '';
         if (trace) {
           trace.setLabel('route', 'pages/homepage');
         }
 
-        const cacheKey = new Request(url.origin + cachePath, { method: 'GET' });
+        const cacheKey = new Request(url.origin + cachePath + cacheKeyOrigin, { method: 'GET' });
         let cached = null;
         if (trace && trace.mode === 'bypass-cache') {
           trace.setLabel('cache', 'bypass');
@@ -1175,21 +1379,28 @@ export default {
           : html;
 
         injected = trace
-          ? trace.time('inject_meta', () => injectStatusMetaTags(injected, artifact, url))
-          : injectStatusMetaTags(injected, artifact, url);
+          ? trace.time('inject_meta', () => injectStatusMetaTags(injected, artifact, url, hostPageMeta))
+          : injectStatusMetaTags(injected, artifact, url, hostPageMeta);
 
+        const bootstrapScripts = [];
         if (snapshotInlineJson) {
+          bootstrapScripts.push(
+            `${HOMEPAGE_PRELOAD_STYLE_TAG}\n  <script>globalThis.__UPTIMER_INITIAL_HOMEPAGE__=${snapshotInlineJson};</script>`,
+          );
+        }
+        if (hostSlug !== null) {
+          const slugJson = safeJsonForInlineScript(hostSlug);
+          bootstrapScripts.push(
+            `<script>globalThis.__UPTIMER_STATUS_PAGE_SLUG__=${slugJson};</script>`,
+          );
+        }
+        if (bootstrapScripts.length > 0) {
+          const bootstrapBlock = `  ${bootstrapScripts.join('\n  ')}\n`;
           injected = trace
             ? trace.time('inject_bootstrap', () =>
-                injected.replace(
-                  '</head>',
-                  `  ${HOMEPAGE_PRELOAD_STYLE_TAG}\n  <script>globalThis.__UPTIMER_INITIAL_HOMEPAGE__=${snapshotInlineJson};</script>\n</head>`,
-                ),
+                injected.replace('</head>', `${bootstrapBlock}</head>`),
               )
-            : injected.replace(
-                '</head>',
-                `  ${HOMEPAGE_PRELOAD_STYLE_TAG}\n  <script>globalThis.__UPTIMER_INITIAL_HOMEPAGE__=${snapshotInlineJson};</script>\n</head>`,
-              );
+            : injected.replace('</head>', `${bootstrapBlock}</head>`);
         }
 
         const headers = sanitizeHtmlResponseHeaders(base.headers);

@@ -15,6 +15,7 @@ import {
   listStatusPageMonitorIds,
   resolveOptionalPublicStatusPage,
   resolvePublicStatusPage,
+  resolvePublicStatusPageByHostname,
 } from '../public/status-page';
 import {
   buildNumberedPlaceholders,
@@ -1002,6 +1003,22 @@ publicRoutes.get('/status-pages/:slug/status', async (c) => {
   });
   if (snapshot) applyStatusCacheHeaders(res, snapshot.age);
   return res;
+});
+
+// Public hostname -> resolved status page identity for Pages edge routing.
+// Returns only routing-safe public metadata; unknown hosts throw NOT_FOUND so
+// Pages fails closed without falling back to the default page.
+publicRoutes.get('/resolve-host', async (c) => {
+  const hostname = z.string().trim().toLowerCase().min(1).max(253).parse(c.req.query('host'));
+  const page = await resolvePublicStatusPageByHostname(c.env.DB, hostname);
+  return c.json({
+    id: page.id,
+    slug: page.slug,
+    name: page.name,
+    title: page.title,
+    description: page.description,
+    custom_hostname: page.custom_hostname,
+  });
 });
 
 publicRoutes.get('/homepage', async (c) => {

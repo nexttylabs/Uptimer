@@ -14,6 +14,7 @@ import './styles.css';
 declare global {
   var __UPTIMER_INITIAL_HOMEPAGE__: PublicHomepageResponse | undefined;
   var __UPTIMER_INITIAL_STATUS__: StatusResponse | undefined;
+  var __UPTIMER_STATUS_PAGE_SLUG__: string | undefined;
 }
 
 const LS_PUBLIC_HOMEPAGE_KEY = 'uptimer_public_homepage_snapshot_v2';
@@ -169,7 +170,14 @@ if (seedHomepage) {
   const updatedAt =
     typeof seedHomepage.generated_at === 'number' ? seedHomepage.generated_at * 1000 : Date.now();
 
-  queryClient.setQueryData<PublicHomepageResponse>(['homepage'], seedHomepage, { updatedAt });
+  // Custom-domain root: seed the slug-qualified query key so the SPA reuses
+  // the same cache/API path as /status/:slug.
+  const bootstrapSlug =
+    typeof globalThis.__UPTIMER_STATUS_PAGE_SLUG__ === 'string'
+      ? globalThis.__UPTIMER_STATUS_PAGE_SLUG__
+      : undefined;
+  const seedKey = bootstrapSlug ? ['homepage', bootstrapSlug] : ['homepage'];
+  queryClient.setQueryData<PublicHomepageResponse>(seedKey, seedHomepage, { updatedAt });
   writePersistedHomepageCache(seedHomepage);
 }
 

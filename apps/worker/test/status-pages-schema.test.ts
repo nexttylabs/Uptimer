@@ -12,6 +12,7 @@ describe('status page Drizzle schema', () => {
     expect(statusPages.id.name).toBe('id');
     expect(statusPages.slug.name).toBe('slug');
     expect(statusPages.isPublic.name).toBe('is_public');
+    expect(statusPages.customHostname?.name).toBe('custom_hostname');
 
     expect(statusPageMonitors.statusPageId.name).toBe('status_page_id');
     expect(statusPageMonitors.monitorId.name).toBe('monitor_id');

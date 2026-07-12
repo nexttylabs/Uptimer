@@ -6,6 +6,7 @@ export type PublicStatusPage = {
   name: string;
   title: string;
   description: string;
+  custom_hostname: string | null;
 };
 
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -21,7 +22,7 @@ export async function resolvePublicStatusPage(
   const page = await db
     .prepare(
       `
-        SELECT id, slug, name, title, description
+        SELECT id, slug, name, title, description, custom_hostname
         FROM status_pages
         WHERE slug = ?1 AND is_public = 1
       `,
@@ -43,7 +44,7 @@ export async function resolvePublicStatusPageById(
   const page = await db
     .prepare(
       `
-        SELECT id, slug, name, title, description
+        SELECT id, slug, name, title, description, custom_hostname
         FROM status_pages
         WHERE id = ?1 AND is_public = 1
       `,
@@ -105,4 +106,29 @@ export async function assertStatusPageMonitor(
     .first<{ id: number }>();
   if (!monitor) throw new AppError(404, 'NOT_FOUND', 'Monitor not found');
   return monitor;
+}
+
+/**
+ * Resolve a single public status page by its bound custom hostname.
+ *
+ * Returns only routing-safe public metadata. Throws `NOT_FOUND` for unknown,
+ * cleared, or non-public bindings so Pages can fail closed without falling
+ * back to the default page.
+ */
+export async function resolvePublicStatusPageByHostname(
+  db: D1Database,
+  hostname: string,
+): Promise<PublicStatusPage> {
+  const page = await db
+    .prepare(
+      `
+        SELECT id, slug, name, title, description, custom_hostname
+        FROM status_pages
+        WHERE custom_hostname = ?1 AND is_public = 1
+      `,
+    )
+    .bind(hostname)
+    .first<PublicStatusPage>();
+  if (!page) throw new AppError(404, 'NOT_FOUND', 'Status page not found');
+  return page;
 }

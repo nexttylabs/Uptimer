@@ -185,6 +185,7 @@ export const statusPages = sqliteTable(
     title: text('title').notNull(),
     description: text('description').notNull().default(''),
     themeConfigJson: text('theme_config_json'),
+    customHostname: text('custom_hostname'),
     isPublic: integer('is_public', { mode: 'boolean' }).notNull().default(true),
     createdAt: integer('created_at')
       .notNull()
@@ -195,6 +196,9 @@ export const statusPages = sqliteTable(
   },
   (t) => ({
     slugUniq: uniqueIndex('uq_status_pages_slug').on(t.slug),
+    customHostnameUniq: uniqueIndex('uq_status_pages_custom_hostname')
+      .on(t.customHostname)
+      .where(sql`custom_hostname IS NOT NULL`),
   }),
 );
 

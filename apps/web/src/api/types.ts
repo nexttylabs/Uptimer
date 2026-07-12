@@ -590,6 +590,7 @@ export interface StatusPage {
   name: string;
   title: string;
   description: string;
+  custom_hostname: string | null;
   is_public: boolean;
   monitor_ids: number[];
   created_at: number;
@@ -606,6 +607,7 @@ export interface CreateStatusPageInput {
   title: string;
   description?: string;
   is_public?: boolean;
+  custom_hostname?: string | null;
   monitor_ids?: number[];
 }
 
@@ -615,6 +617,7 @@ export interface PatchStatusPageInput {
   title?: string;
   description?: string;
   is_public?: boolean;
+  custom_hostname?: string | null;
   monitor_ids?: number[];
 }
 
