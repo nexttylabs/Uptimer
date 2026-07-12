@@ -445,20 +445,30 @@ jobs:
 
       - name: Upsert Pages env for custom-domain default hosts (best-effort)
         shell: bash
+        env:
+          UPTIMER_DEFAULT_HOSTS: ${{ secrets.UPTIMER_DEFAULT_HOSTS }}
         run: |
           set -euo pipefail
 
-          # Derive the Pages project's *.pages.dev hostname so custom-host routing
-          # knows which hosts are platform defaults. Operators can extend this
-          # with additional default hostnames via UPTIMER_DEFAULT_HOSTS_OVERRIDE.
-          pages_domain="${PAGES_PROJECT}.pages.dev"
-          default_hosts="${UPTIMER_DEFAULT_HOSTS_OVERRIDE:-$pages_domain}"
+          # Prefer GitHub secret UPTIMER_DEFAULT_HOSTS if set; otherwise fall back
+          # to the real Pages project domains from the API (Cloudflare may mangle
+          # the subdomain suffix, and custom domains must be platform hosts too).
+          default_hosts="${UPTIMER_DEFAULT_HOSTS:-}"
+          if [[ -z "$default_hosts" ]]; then
+            pages_info="$(
+              curl -fsSL "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/${PAGES_PROJECT}" \
+                -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+                -H "Content-Type: application/json"
+            )"
+            default_hosts="$(printf '%s' "$pages_info" | jq -r '.result.domains[]?' | paste -sd ',' -)"
+          fi
 
           if [[ -z "$default_hosts" ]]; then
-            echo "Skipping UPTIMER_DEFAULT_HOSTS: could not derive Pages hostname"
+            echo "Skipping UPTIMER_DEFAULT_HOSTS: no secret and could not resolve Pages domains"
             exit 0
           fi
 
+          echo "UPTIMER_DEFAULT_HOSTS=$default_hosts"
           printf %s "$default_hosts" | pnpm -C apps/worker exec wrangler --cwd ../.. pages secret put UPTIMER_DEFAULT_HOSTS --project-name "$PAGES_PROJECT"
 
       - name: Deploy Pages (idempotent)
