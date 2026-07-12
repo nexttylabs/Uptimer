@@ -927,6 +927,13 @@
         ],
         "evidence_ref": "All six audit lenses pass: Host trust boundary (X-Forwarded-Host/query ignored), cache key isolation (host-qualified), Zod validation, parameterized queries, fail-closed unknown hosts, ZodError handling. 60 tests pass; typecheck and lint clean. No findings."
       }
+    },
+    {
+      "at": "2026-07-12T10:49:27Z",
+      "action": "finish_reset",
+      "details": {
+        "plan_path": "docs/plans/2026-07-12-status-page-custom-domains-plan.md"
+      }
     }
   ],
   "requires_replan": false,
