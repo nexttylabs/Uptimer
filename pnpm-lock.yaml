@@ -81,6 +81,9 @@ importers:
       vite:
         specifier: ^6.0.0
         version: 6.4.1(@types/node@22.19.7)(jiti@1.21.7)
+      vitest:
+        specifier: ^2.1.9
+        version: 2.1.9(@types/node@22.19.7)
 
   apps/worker:
     dependencies:

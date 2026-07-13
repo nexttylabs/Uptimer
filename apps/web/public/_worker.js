@@ -1272,8 +1272,11 @@ export default {
 
         const cacheKey = new Request(url.origin + cachePath + cacheKeyOrigin, { method: 'GET' });
         let cached = null;
-        if (trace && trace.mode === 'bypass-cache') {
-          trace.setLabel('cache', 'bypass');
+        // A slug can become private after public HTML was cached. Resolve its
+        // current public artifact before considering any stale branded HTML.
+        const requiresFreshSlugResolution = slug !== null && hostSlug === null;
+        if ((trace && trace.mode === 'bypass-cache') || requiresFreshSlugResolution) {
+          if (trace) trace.setLabel('cache', 'bypass');
           cached = null;
         } else {
           try {
@@ -1319,6 +1322,15 @@ export default {
 
         const artifact = await fetchPublicHomepageArtifact(env, trace, now, slug);
         if (!artifact) {
+          if (requiresFreshSlugResolution) {
+            const headers = sanitizeHtmlResponseHeaders(base.headers);
+            headers.set('Content-Type', 'text/html; charset=utf-8');
+            headers.set('Cache-Control', 'private, no-store');
+            headers.append('Vary', 'Accept');
+            headers.delete('Location');
+            if (trace) trace.setLabel('path', 'private_slug_shell');
+            return finalizeTraceResponse(new Response(html, { status: 200, headers }), trace);
+          }
           if (cached) {
             const cachedGeneratedAt = readGeneratedAtHeader(cached);
             if (cachedGeneratedAt === null) {

@@ -11,20 +11,21 @@ import {
   readPublicSiteSettings,
 } from './data';
 import {
+  resolveAccessibleStatusPageById,
   resolveDefaultPublicStatusPage,
-  resolvePublicStatusPageById,
 } from './status-page';
 
 export async function computePublicStatusPayload(
   db: D1Database,
   now: number,
-  opts: { includeHiddenMonitors?: boolean; statusPageId?: number } = {},
+  opts: { includeHiddenMonitors?: boolean; statusPageId?: number; isAdmin?: boolean } = {},
 ): Promise<PublicStatusResponse> {
   const includeHiddenMonitors = opts.includeHiddenMonitors ?? false;
+  const isAdmin = opts.isAdmin ?? includeHiddenMonitors;
   const page =
     opts.statusPageId === undefined
       ? await resolveDefaultPublicStatusPage(db)
-      : await resolvePublicStatusPageById(db, opts.statusPageId);
+      : await resolveAccessibleStatusPageById(db, opts.statusPageId, isAdmin);
   const statusPageId = opts.statusPageId;
 
   const [monitorData, activeIncidentSummary, maintenanceWindows, settings] = await Promise.all([

@@ -18,7 +18,7 @@ import {
   readPublicMonitorRuntimeTotalsSnapshot,
   toMonitorRuntimeTotalsEntryMap,
 } from '../public/monitor-runtime';
-import { resolveOptionalPublicStatusPage } from '../public/status-page';
+import { resolveOptionalAccessibleStatusPage } from '../public/status-page';
 import { monitorVisibilityPredicate } from '../public/visibility';
 
 const ACTIVE_MONITOR_CACHE_TTL_MS = 30_000;
@@ -74,15 +74,19 @@ function createTrace(c: {
   );
 }
 
-function normalizeAnalyticsUptimeCacheKeyUrl(url: URL): void {
+export function normalizeAnalyticsUptimeCacheKeyUrl(url: URL): void {
   const range = url.searchParams.get('range');
   if (range !== null && range !== '30d' && range !== '90d') {
     return;
   }
 
+  const statusPage = url.searchParams.get('__status_page');
   url.search = '';
   if (range === '90d') {
     url.searchParams.set('range', '90d');
+  }
+  if (statusPage !== null) {
+    url.searchParams.set('__status_page', statusPage);
   }
 }
 
@@ -201,9 +205,10 @@ export async function handlePublicAnalyticsUptime(c: {
 }): Promise<Response> {
   const includeHiddenMonitors = isAuthorizedStatusAdminRequest(c);
   const range = parseAnalyticsUptimeRange(c.req.query('range'));
-  const statusPage = await resolveOptionalPublicStatusPage(
+  const statusPage = await resolveOptionalAccessibleStatusPage(
     c.env.DB,
     c.req.query('__status_page'),
+    includeHiddenMonitors,
   );
   const trace = createTrace(c);
   trace.setLabel('route', 'public/analytics-uptime');
@@ -334,7 +339,7 @@ export async function handlePublicAnalyticsUptime(c: {
         headers: { 'Content-Type': 'application/json; charset=utf-8' },
       },
     ),
-    includeHiddenMonitors,
+    includeHiddenMonitors || statusPage?.is_private === true,
   );
   trace.setLabel('path', 'snapshot');
   trace.finish('total');
@@ -358,5 +363,14 @@ publicUiAnalyticsRoutes.use(
     normalizeCacheKeyUrl: normalizeAnalyticsUptimeCacheKeyUrl,
   }),
 );
+
+publicUiAnalyticsRoutes.use('*', async (c, next) => {
+  await next();
+  const isPageScoped =
+    c.req.path.includes('/status-pages/') || c.req.query('__status_page') !== undefined;
+  if (isPageScoped && (c.res.status === 404 || isAuthorizedStatusAdminRequest(c))) {
+    applyPrivateNoStore(c.res);
+  }
+});
 
 registerPublicUiAnalyticsRoutes(publicUiAnalyticsRoutes);

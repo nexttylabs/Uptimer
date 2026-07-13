@@ -7,6 +7,7 @@ import { useApplyServerLocaleSetting } from '../app/useApplyServerLocaleSetting'
 import { fetchStatus } from '../api/client';
 import { useAuth } from '../app/AuthContext';
 import { ADMIN_PATH } from '../app/adminPaths';
+import { resolveLoginReturnTarget } from '../app/loginReturnTarget';
 import { Button, Card, INPUT_CLASS } from '../components/ui';
 
 export function AdminLogin() {
@@ -18,7 +19,8 @@ export function AdminLogin() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = (location.state as { from?: { pathname: string } })?.from?.pathname || ADMIN_PATH;
+  const returnLocation = (location.state as { from?: unknown } | null)?.from;
+  const from = resolveLoginReturnTarget(returnLocation, ADMIN_PATH);
 
   const statusQuery = useQuery({
     queryKey: ['status'],
@@ -91,11 +93,17 @@ export function AdminLogin() {
               onChange={(e) => setToken(e.target.value)}
               className={INPUT_CLASS}
               placeholder={t('admin_login.placeholder')}
+              aria-invalid={Boolean(error)}
+              aria-describedby={error ? 'admin-login-error' : undefined}
               autoFocus
             />
           </div>
 
-          {error && <p className="ui-error text-sm">{error}</p>}
+          {error && (
+            <p id="admin-login-error" className="ui-error text-sm" role="alert" aria-live="polite">
+              {error}
+            </p>
+          )}
 
           <Button type="submit" className="w-full" disabled={isSubmitting}>
             {isSubmitting ? t('admin_login.submitting') : t('admin_login.submit')}

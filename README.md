@@ -18,6 +18,20 @@ English | **[中文](README.zh-CN.md)**
 
 ---
 
+## Fork Provenance & Project Changes
+
+This repository is a fork of [VrianCao/Uptimer](https://github.com/VrianCao/Uptimer), an open-source Cloudflare Workers + Pages + D1 uptime-monitoring project. The fork keeps the original MIT license, core monitoring model, Cloudflare deployment approach, and existing admin-token authentication model.
+
+The main changes maintained in this fork are:
+
+- **Multiple status pages** — page slugs, per-page branding, page-scoped API responses, snapshots, and cache keys.
+- **Custom hostnames** — Host-based status-page routing with fail-closed handling for unknown hosts and page-qualified edge cache keys.
+- **Private status pages** — optional `is_public = false` pages accessible only with the existing Admin Bearer Token; anonymous or invalid-token requests are concealed as `404 NOT_FOUND` and private responses use `private, no-store` with `Vary: Authorization`.
+- **Admin login handoff** — private deep links reuse the existing login flow, preserve safe same-origin pathname/search/hash return targets, and prevent stale private HTML from being served by Pages caches.
+- **Deployment and verification** — deployment defaults can be resolved from secrets or the API, with additional Worker/Pages tests, local D1 seed support, browser HITL verification, and project documentation.
+
+For the complete change history, see `git log` and the repository's commit history. Changes specific to this fork are kept separate from the upstream project's original history and do not imply that the upstream repository contains these additions.
+
 ## Why Uptimer?
 
 - **Zero ops** — No servers, containers, or databases to manage. Runs entirely on Cloudflare's free/paid tiers.

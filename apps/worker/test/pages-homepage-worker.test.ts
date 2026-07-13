@@ -81,6 +81,34 @@ describe('pages homepage worker', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it('ignores cached slug HTML and serves a no-store shell when the page is not public', async () => {
+    const cacheMatch = vi.fn(() =>
+      new Response('<html>stale private branding</html>', {
+        headers: {
+          'X-Uptimer-Generated-At': String(Math.floor(Date.now() / 1000)),
+          'Cache-Control': 'public, max-age=600',
+        },
+      }),
+    );
+    const cache = installDefaultCacheMock(cacheMatch);
+    const env = makeEnv();
+    globalThis.fetch = vi.fn(async () => new Response('not found', { status: 404 })) as never;
+
+    const res = await pageWorker.fetch(
+      new Request('https://status.example.com/status/private', {
+        headers: { Accept: 'text/html' },
+      }),
+      env,
+      { waitUntil: vi.fn() },
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(await res.text()).not.toContain('stale private branding');
+    expect(cacheMatch).not.toHaveBeenCalled();
+    expect(cache.put).not.toHaveBeenCalled();
+  });
+
   it('recomputes cache-control on cache hit with generated-at header', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-02-17T00:01:00.000Z'));

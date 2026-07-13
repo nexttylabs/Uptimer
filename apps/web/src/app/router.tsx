@@ -4,6 +4,7 @@ import { createBrowserRouter, useParams } from 'react-router-dom';
 import { StatusPage } from '../pages/StatusPage';
 import { ADMIN_ANALYTICS_PATH, ADMIN_LOGIN_PATH, ADMIN_PATH } from './adminPaths';
 import { ProtectedRoute } from './ProtectedRoute';
+import { StatusPageAccessGate } from './StatusPageAccessGate';
 import { StatusPageSlugContext, type StatusPageSlug, bootstrapStatusPageSlug } from './StatusPageSlugContext';
 
 const AdminDashboard = lazy(async () => {
@@ -40,7 +41,13 @@ function StatusPageRoute() {
   const normalizedSlug: StatusPageSlug = slug ?? bootstrapStatusPageSlug();
   return (
     <StatusPageSlugContext.Provider value={normalizedSlug}>
-      <StatusPage />
+      {normalizedSlug ? (
+        <StatusPageAccessGate slug={normalizedSlug}>
+          <StatusPage />
+        </StatusPageAccessGate>
+      ) : (
+        <StatusPage />
+      )}
     </StatusPageSlugContext.Provider>
   );
 }
@@ -50,7 +57,11 @@ function SlugScopedRoute({ children }: { children: React.ReactNode }) {
   const normalizedSlug: StatusPageSlug = slug ?? undefined;
   return (
     <StatusPageSlugContext.Provider value={normalizedSlug}>
-      {children}
+      {normalizedSlug ? (
+        <StatusPageAccessGate slug={normalizedSlug}>{children}</StatusPageAccessGate>
+      ) : (
+        children
+      )}
     </StatusPageSlugContext.Provider>
   );
 }

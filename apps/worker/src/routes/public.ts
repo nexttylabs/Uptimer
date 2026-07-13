@@ -13,8 +13,8 @@ import { computePublicStatusPayload } from '../public/status';
 import {
   assertStatusPageMonitor,
   listStatusPageMonitorIds,
-  resolveOptionalPublicStatusPage,
-  resolvePublicStatusPage,
+  resolveAccessibleStatusPage,
+  resolveOptionalAccessibleStatusPage,
   resolvePublicStatusPageByHostname,
 } from '../public/status-page';
 import {
@@ -99,14 +99,21 @@ function withVisibilityAwareCaching(res: Response, includeHiddenMonitors: boolea
 }
 
 async function resolveRouteStatusPage(c: {
-  env: Pick<Env, 'DB'>;
-  req: { query(name: string): string | undefined };
+  env: Pick<Env, 'DB' | 'ADMIN_TOKEN'>;
+  req: { query(name: string): string | undefined; header(name: string): string | undefined };
 }) {
-  return await resolveOptionalPublicStatusPage(c.env.DB, c.req.query('__status_page'));
+  return await resolveOptionalAccessibleStatusPage(
+    c.env.DB,
+    c.req.query('__status_page'),
+    isAuthorizedStatusAdminRequest(c),
+  );
 }
 
 async function assertRouteStatusPageMonitor(
-  c: { env: Pick<Env, 'DB'>; req: { query(name: string): string | undefined } },
+  c: {
+    env: Pick<Env, 'DB' | 'ADMIN_TOKEN'>;
+    req: { query(name: string): string | undefined; header(name: string): string | undefined };
+  },
   monitorId: number,
 ) {
   const page = await resolveRouteStatusPage(c);
@@ -167,6 +174,15 @@ publicRoutes.use(
     ],
   }),
 );
+
+publicRoutes.use('*', async (c, next) => {
+  await next();
+  const isPageScoped =
+    c.req.path.includes('/status-pages/') || c.req.query('__status_page') !== undefined;
+  if (isPageScoped && (c.res.status === 404 || isAuthorizedStatusAdminRequest(c))) {
+    applyPrivateNoStore(c.res);
+  }
+});
 
 const latencyRangeSchema = z.enum(['24h']);
 const uptimeRangeSchema = z.enum(['24h', '7d', '30d']);
@@ -979,13 +995,18 @@ publicRoutes.get('/status', async (c) => {
 });
 
 publicRoutes.get('/status-pages/:slug/status', async (c) => {
-  const page = await resolvePublicStatusPage(c.env.DB, c.req.param('slug'));
+  const isAdmin = isAuthorizedStatusAdminRequest(c);
+  const page = await resolveAccessibleStatusPage(
+    c.env.DB,
+    c.req.param('slug'),
+    isAdmin,
+  );
   const now = Math.floor(Date.now() / 1000);
   const snapshot = await readPageStatusSnapshotJson(c.env.DB, now, page.id);
   const payload = snapshot
     ? JSON.parse(snapshot.bodyJson)
-    : await computePublicStatusPayload(c.env.DB, now, { statusPageId: page.id });
-  if (!snapshot) {
+    : await computePublicStatusPayload(c.env.DB, now, { statusPageId: page.id, isAdmin });
+  if (!snapshot && !page.is_private) {
     c.executionCtx.waitUntil(
       writePageStatusSnapshot(c.env.DB, now, page.id, payload).catch((err) => {
         console.warn('page status snapshot: write failed', err);
@@ -1001,6 +1022,7 @@ publicRoutes.get('/status-pages/:slug/status', async (c) => {
       description: page.description,
     },
   });
+  if (page.is_private) return applyPrivateNoStore(res);
   if (snapshot) applyStatusCacheHeaders(res, snapshot.age);
   return res;
 });
@@ -1190,7 +1212,11 @@ publicRoutes.get('/homepage-artifact', async (c) => {
 });
 
 publicRoutes.get('/status-pages/:slug/incidents', async (c) => {
-  const page = await resolvePublicStatusPage(c.env.DB, c.req.param('slug'));
+  const page = await resolveAccessibleStatusPage(
+    c.env.DB,
+    c.req.param('slug'),
+    isAuthorizedStatusAdminRequest(c),
+  );
   const limit = z.coerce.number().int().min(1).max(200).optional().default(20).parse(c.req.query('limit'));
   const { results } = await c.env.DB.prepare(`
     SELECT i.id, i.title, i.status, i.impact, i.message, i.started_at, i.resolved_at
@@ -1203,7 +1229,7 @@ publicRoutes.get('/status-pages/:slug/incidents', async (c) => {
     listIncidentMonitorIdsByIncidentId(c.env.DB, rows.map((row) => row.id)),
   ]);
   const pageMonitorIds = await listStatusPageMonitorIds(c.env.DB, page.id, [...monitorLinks.values()].flat());
-  return c.json({
+  const res = c.json({
     incidents: rows.map((row) => incidentRowToApi(
       row,
       updates.get(row.id) ?? [],
@@ -1211,6 +1237,7 @@ publicRoutes.get('/status-pages/:slug/incidents', async (c) => {
     )),
     next_cursor: null,
   });
+  return page.is_private ? applyPrivateNoStore(res) : res;
 });
 
 publicRoutes.get('/incidents', async (c) => {
@@ -1374,7 +1401,11 @@ publicRoutes.get('/incidents', async (c) => {
 });
 
 publicRoutes.get('/status-pages/:slug/maintenance-windows', async (c) => {
-  const page = await resolvePublicStatusPage(c.env.DB, c.req.param('slug'));
+  const page = await resolveAccessibleStatusPage(
+    c.env.DB,
+    c.req.param('slug'),
+    isAuthorizedStatusAdminRequest(c),
+  );
   const limit = z.coerce.number().int().min(1).max(200).optional().default(20).parse(c.req.query('limit'));
   const { results } = await c.env.DB.prepare(`
     SELECT mw.id, mw.title, mw.message, mw.starts_at, mw.ends_at, mw.created_at
@@ -1384,13 +1415,14 @@ publicRoutes.get('/status-pages/:slug/maintenance-windows', async (c) => {
   const rows = results ?? [];
   const monitorLinks = await listMaintenanceWindowMonitorIdsByWindowId(c.env.DB, rows.map((row) => row.id));
   const pageMonitorIds = await listStatusPageMonitorIds(c.env.DB, page.id, [...monitorLinks.values()].flat());
-  return c.json({
+  const res = c.json({
     maintenance_windows: rows.map((row) => maintenanceWindowRowToApi(
       row,
       (monitorLinks.get(row.id) ?? []).filter((id) => pageMonitorIds.has(id)),
     )),
     next_cursor: null,
   });
+  return page.is_private ? applyPrivateNoStore(res) : res;
 });
 
 publicRoutes.get('/maintenance-windows', async (c) => {
@@ -1938,7 +1970,7 @@ publicRoutes.get('/analytics/uptime', async (c) => {
       },
       monitors: out,
     }),
-    includeHiddenMonitors,
+    includeHiddenMonitors || statusPage?.is_private === true,
   );
 });
 

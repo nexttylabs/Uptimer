@@ -18,6 +18,20 @@
 
 ---
 
+## Fork 来源与项目改动
+
+本仓库 Fork 自 [VrianCao/Uptimer](https://github.com/VrianCao/Uptimer)。这是一个基于 Cloudflare Workers + Pages + D1 的开源可用性监控项目。本 Fork 保留原项目的 MIT 许可证、核心监控模型、Cloudflare 部署方式，以及现有的管理员 Token 认证模型。
+
+本 Fork 目前维护的主要改动包括：
+
+- **多状态页** — 支持页面 slug、按页面配置品牌信息、按页面隔离 API 响应、快照和缓存键。
+- **自定义域名** — 基于 Host 的状态页路由；未知 Host fail-closed，并使用按页面区分的边缘缓存键。
+- **私有状态页** — `is_public = false` 页面复用现有 Admin Bearer Token 访问；匿名或无效 Token 请求统一伪装为 `404 NOT_FOUND`，私有响应使用 `private, no-store` 与 `Vary: Authorization`。
+- **管理员登录跳转** — 私有深链接复用现有登录流程，仅保留安全的同源 pathname/search/hash 返回目标，并避免 Pages 缓存继续提供过期的私有 HTML。
+- **部署与验证** — 部署默认域名可从 Secret 或 API 解析，并补充 Worker/Pages 测试、本地 D1 seed、浏览器 HITL 验收和项目文档。
+
+完整变更历史请参阅 `git log` 和仓库提交记录。本 Fork 的改动与上游原始历史保持区分，不代表上游仓库已经包含上述新增功能。
+
 ## 为什么选择 Uptimer？
 
 - **零运维** — 无需管理服务器、容器或数据库。完全运行在 Cloudflare 的免费/付费套餐上。

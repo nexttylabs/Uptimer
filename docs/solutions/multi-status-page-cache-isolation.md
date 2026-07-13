@@ -133,3 +133,45 @@ adding a precedence layer or a second branding abstraction. Host-routing reuses 
 same resolved page-slug context and qualified cache keys rather than creating a duplicate
 business path or D1 snapshot keys. Appending here avoids a duplicate solution document
 for the same page-isolation invariant.
+
+## Admin-only private page access
+
+Private slug pages reuse the existing Admin Bearer Token contract rather than adding
+page passwords, share tokens, sessions, or RBAC. The worker resolves a slug through an
+authorization-aware resolver: missing or invalid authorization returns the same
+`404 NOT_FOUND` as an unknown slug, while authorized private success and error
+responses use `Cache-Control: private, no-store` and `Vary: Authorization`. Authorized
+payloads never enter public snapshots or shared caches.
+
+The browser gates slug-scoped routes after the API's 404, then sends the user through
+the existing admin login with a same-origin pathname/search/hash return target. The
+Pages worker bypasses stale slug HTML cache entries and serves an unbranded, no-store
+SPA shell when public visibility cannot be established. Analytics cache keys retain
+`__status_page`; otherwise a warm public response could mask a private 404.
+
+### Evidence
+
+- `apps/worker/test/public-status-pages.test.ts` — private/unknown/authorized slug
+  contracts, cache headers, snapshot-write protection, and analytics key isolation
+- `apps/web/src/app/StatusPageAccessGate.tsx` — API-first access gate and accessible
+  loading announcement
+- `apps/web/src/app/loginReturnTarget.ts` — same-origin return-target validation
+- `apps/web/public/_worker.js` — stale slug HTML bypass and neutral private shell
+- Chrome HITL through local Pages + Worker + D1 — deep-link redirect/login return,
+  refresh, logout, invalid-token recovery, public/private cache warm order, and
+  private custom-host 404
+
+### Reusability critique
+
+- `reusability: high`
+- `next_reuse_scenarios`: any future protected public resource that must preserve
+  existence concealment and shared-cache safety; any additional page-scoped analytics
+  endpoint; any route that needs a safe login return target.
+- **Falsifiability**: This pattern is too strong if private resources later require
+  delegated users or per-page roles; that would justify a new authorization model,
+  not silently extending the single Admin token.
+- **Evidence trail**: The 75 focused Worker tests, 5 Web tests, typecheck/lint checks,
+  code/UI review passes, and recorded browser matrix support the current contract.
+- **Architecture entropy resistance**: The design adds no new credential storage or
+  service. It centralizes the access decision in the existing resolver and keeps edge
+  HTML behavior deliberately neutral instead of duplicating authorization in Pages.

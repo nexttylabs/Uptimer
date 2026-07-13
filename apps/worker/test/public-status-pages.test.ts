@@ -6,6 +6,7 @@ import { AppError, handleError, handleNotFound } from '../src/middleware/errors'
 import { publicRoutes } from '../src/routes/public';
 import {
   assertStatusPageMonitor,
+  resolveAccessibleStatusPage,
   resolvePublicStatusPage,
 } from '../src/public/status-page';
 import { createFakeD1Database } from './helpers/fake-d1';
@@ -25,6 +26,32 @@ describe('public status page scope', () => {
 
     await expect(resolvePublicStatusPage(db, 'partners')).resolves.toMatchObject({ id: 4 });
     await expect(resolvePublicStatusPage(db, 'missing')).rejects.toMatchObject<AppError>({ status: 404 });
+  });
+
+  it('conceals a private slug unless administrator access is allowed', async () => {
+    const db = createFakeD1Database([
+      {
+        match: 'from status_pages',
+        first: () => ({
+          id: 5,
+          slug: 'private',
+          name: 'Private',
+          title: 'Private status',
+          description: '',
+          custom_hostname: null,
+          is_public: 0,
+        }),
+      },
+    ]);
+
+    await expect(resolveAccessibleStatusPage(db, 'private', false)).rejects.toMatchObject<AppError>({
+      status: 404,
+      code: 'NOT_FOUND',
+    });
+    await expect(resolveAccessibleStatusPage(db, 'private', true)).resolves.toMatchObject({
+      id: 5,
+      is_private: true,
+    });
   });
 
   it('returns only the resolved page payload from the slug route', async () => {
@@ -66,6 +93,176 @@ describe('public status page scope', () => {
     });
   });
 
+  it('preserves __status_page in the analytics uptime cache key to prevent cross-page poisoning', async () => {
+    const { normalizeAnalyticsUptimeCacheKeyUrl } = await import('../src/routes/public-ui-analytics');
+
+    const pubUrl = new URL('https://example.com/api/v1/public/analytics/uptime?__status_page=pub');
+    const privateUrl = new URL('https://example.com/api/v1/public/analytics/uptime?__status_page=private');
+    normalizeAnalyticsUptimeCacheKeyUrl(pubUrl);
+    normalizeAnalyticsUptimeCacheKeyUrl(privateUrl);
+
+    expect(pubUrl.search).toContain('__status_page=pub');
+    expect(privateUrl.search).toContain('__status_page=private');
+    expect(pubUrl.search).not.toBe(privateUrl.search);
+  });
+
+  it('serves a private slug only with Admin authorization and never queues a snapshot write', async () => {
+    Object.defineProperty(globalThis, 'caches', {
+      configurable: true,
+      value: { open: vi.fn(async () => ({ match: async () => undefined, put: async () => undefined })) },
+    });
+    const db = createFakeD1Database([
+      {
+        match: 'from status_pages',
+        first: () => ({
+          id: 5,
+          slug: 'private',
+          name: 'Private',
+          title: 'Private status',
+          description: '',
+          custom_hostname: null,
+          is_public: 0,
+        }),
+      },
+      { match: 'from monitors m', all: () => [] },
+      { match: 'from incidents', all: () => [] },
+      { match: 'from maintenance_windows', all: () => [] },
+      { match: 'select value from settings', first: () => ({ value: '3' }) },
+      { match: 'select key, value from settings', all: () => [] },
+    ]);
+    const app = new Hono<{ Bindings: Env }>();
+    app.onError(handleError);
+    app.notFound(handleNotFound);
+    app.route('/api/v1/public', publicRoutes);
+    const waitUntil = vi.fn();
+    const env = { DB: db, ADMIN_TOKEN: 'test-admin-token' } as unknown as Env;
+    const url = 'https://status.example.test/api/v1/public/status-pages/private/status';
+
+    const anonymous = await app.fetch(new Request(url), env, { waitUntil } as unknown as ExecutionContext);
+    expect(anonymous.status).toBe(404);
+    expect(anonymous.headers.get('Cache-Control')).toBe('private, no-store');
+
+    const authorized = await app.fetch(
+      new Request(url, { headers: { Authorization: 'Bearer test-admin-token' } }),
+      env,
+      { waitUntil } as unknown as ExecutionContext,
+    );
+    expect(authorized.status).toBe(200);
+    expect(authorized.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(authorized.headers.get('Vary')).toContain('Authorization');
+    expect(waitUntil).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    '/api/v1/public/status-pages/private/status',
+    '/api/v1/public/status-pages/private/incidents',
+    '/api/v1/public/status-pages/private/maintenance-windows',
+    '/api/v1/public/analytics/uptime?__status_page=private',
+    '/api/v1/public/monitors/9/latency?range=24h&__status_page=private',
+    '/api/v1/public/monitors/9/uptime?range=24h&__status_page=private',
+    '/api/v1/public/monitors/9/outages?range=30d&__status_page=private',
+    '/api/v1/public/monitors/9/day-context?day_start_at=1&__status_page=private',
+  ])('conceals private page-scoped endpoint %s for missing and invalid tokens', async (path) => {
+    Object.defineProperty(globalThis, 'caches', {
+      configurable: true,
+      value: { open: vi.fn(async () => ({ match: async () => undefined, put: async () => undefined })) },
+    });
+    const db = createFakeD1Database([
+      {
+        match: 'from status_pages',
+        first: () => ({
+          id: 5,
+          slug: 'private',
+          name: 'Private',
+          title: 'Private status',
+          description: '',
+          custom_hostname: null,
+          is_public: 0,
+        }),
+      },
+    ]);
+    const app = new Hono<{ Bindings: Env }>();
+    app.onError(handleError);
+    app.notFound(handleNotFound);
+    app.route('/api/v1/public', publicRoutes);
+    const env = { DB: db, ADMIN_TOKEN: 'test-admin-token' } as unknown as Env;
+
+    for (const authorization of [undefined, 'Bearer wrong-token']) {
+      const headers = authorization ? { Authorization: authorization } : undefined;
+      const res = await app.fetch(
+        new Request(`https://status.example.test${path}`, { headers }),
+        env,
+        { waitUntil: vi.fn() } as unknown as ExecutionContext,
+      );
+      expect(res.status).toBe(404);
+      expect(res.headers.get('Cache-Control')).toBe('private, no-store');
+      expect(res.headers.get('Vary')).toContain('Authorization');
+      await expect(res.json()).resolves.toMatchObject({ error: { code: 'NOT_FOUND' } });
+    }
+  });
+
+  it('keeps private custom hostname resolution public-only', async () => {
+    Object.defineProperty(globalThis, 'caches', {
+      configurable: true,
+      value: { open: vi.fn(async () => ({ match: async () => undefined, put: async () => undefined })) },
+    });
+    const db = createFakeD1Database([{ match: 'from status_pages', first: () => null }]);
+    const app = new Hono<{ Bindings: Env }>();
+    app.onError(handleError);
+    app.notFound(handleNotFound);
+    app.route('/api/v1/public', publicRoutes);
+    const res = await app.fetch(
+      new Request('https://status.example.test/api/v1/public/resolve-host?host=private.example.test', {
+        headers: {
+          Authorization: 'Bearer test-admin-token',
+          'X-Forwarded-Host': 'public.example.test',
+        },
+      }),
+      { DB: db, ADMIN_TOKEN: 'test-admin-token' } as unknown as Env,
+      { waitUntil: vi.fn() } as unknown as ExecutionContext,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it('conceals a private slug analytics uptime endpoint without shared caching for missing and invalid tokens', async () => {
+    Object.defineProperty(globalThis, 'caches', {
+      configurable: true,
+      value: { open: vi.fn(async () => ({ match: async () => undefined, put: async () => undefined })) },
+    });
+    const db = createFakeD1Database([
+      {
+        match: 'from status_pages',
+        first: () => ({
+          id: 5,
+          slug: 'private',
+          name: 'Private',
+          title: 'Private status',
+          description: '',
+          custom_hostname: null,
+          is_public: 0,
+        }),
+      },
+    ]);
+    const app = new Hono<{ Bindings: Env }>();
+    app.onError(handleError);
+    app.notFound(handleNotFound);
+    app.route('/api/v1/public', publicRoutes);
+    const env = { DB: db, ADMIN_TOKEN: 'test-admin-token' } as unknown as Env;
+
+    for (const authorization of [undefined, 'Bearer wrong-token']) {
+      const headers = authorization ? { Authorization: authorization } : undefined;
+      const res = await app.fetch(
+        new Request('https://status.example.test/api/v1/public/analytics/uptime?__status_page=private', { headers }),
+        env,
+        { waitUntil: vi.fn() } as unknown as ExecutionContext,
+      );
+      expect(res.status).toBe(404);
+      expect(res.headers.get('Cache-Control')).toBe('private, no-store');
+      expect(res.headers.get('Vary')).toContain('Authorization');
+      await expect(res.json()).resolves.toMatchObject({ error: { code: 'NOT_FOUND' } });
+    }
+  });
+
   it('does not read a default snapshot for a different page', async () => {
     const db = createFakeD1Database([
       {
@@ -75,6 +272,47 @@ describe('public status page scope', () => {
     ]);
 
     await expect(readPageStatusSnapshotJson(db, 200, 4)).resolves.toBeNull();
+  });
+
+  it.each([
+    ['/api/v1/public/status-pages/private/incidents', 'incidents'],
+    ['/api/v1/public/status-pages/private/maintenance-windows', 'maintenance_windows'],
+  ] as const)('serves authorized private collection %s without shared caching', async (path, key) => {
+    Object.defineProperty(globalThis, 'caches', {
+      configurable: true,
+      value: { open: vi.fn(async () => ({ match: async () => undefined, put: async () => undefined })) },
+    });
+    const db = createFakeD1Database([
+      {
+        match: 'from status_pages',
+        first: () => ({
+          id: 5,
+          slug: 'private',
+          name: 'Private',
+          title: 'Private status',
+          description: '',
+          custom_hostname: null,
+          is_public: 0,
+        }),
+      },
+      { match: (sql) => sql.includes('join status_page_incidents'), all: () => [] },
+      { match: (sql) => sql.includes('join status_page_maintenance_windows'), all: () => [] },
+    ]);
+    const app = new Hono<{ Bindings: Env }>();
+    app.onError(handleError);
+    app.notFound(handleNotFound);
+    app.route('/api/v1/public', publicRoutes);
+    const res = await app.fetch(
+      new Request(`https://status.example.test${path}`, {
+        headers: { Authorization: 'Bearer test-admin-token' },
+      }),
+      { DB: db, ADMIN_TOKEN: 'test-admin-token' } as unknown as Env,
+      { waitUntil: vi.fn() } as unknown as ExecutionContext,
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(res.headers.get('Vary')).toContain('Authorization');
+    await expect(res.json()).resolves.toMatchObject({ [key]: [] });
   });
 
   it('renders explicitly linked incidents without monitor links', async () => {

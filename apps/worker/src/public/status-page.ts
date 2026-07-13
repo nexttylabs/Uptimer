@@ -9,6 +9,10 @@ export type PublicStatusPage = {
   custom_hostname: string | null;
 };
 
+type StatusPageRow = PublicStatusPage & { is_public: number };
+
+export type AccessibleStatusPage = PublicStatusPage & { is_private: boolean };
+
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export async function resolvePublicStatusPage(
@@ -33,8 +37,66 @@ export async function resolvePublicStatusPage(
   return page;
 }
 
+export async function resolveAccessibleStatusPage(
+  db: D1Database,
+  slug: string,
+  isAdmin: boolean,
+): Promise<AccessibleStatusPage> {
+  if (!slugPattern.test(slug)) {
+    throw new AppError(404, 'NOT_FOUND', 'Status page not found');
+  }
+
+  const row = await db
+    .prepare(
+      `
+        SELECT id, slug, name, title, description, custom_hostname, is_public
+        FROM status_pages
+        WHERE slug = ?1
+      `,
+    )
+    .bind(slug)
+    .first<StatusPageRow>();
+  if (!row || (row.is_public === 0 && !isAdmin)) {
+    throw new AppError(404, 'NOT_FOUND', 'Status page not found');
+  }
+
+  const { is_public, ...page } = row;
+  return { ...page, is_private: is_public === 0 };
+}
+
+export async function resolveOptionalAccessibleStatusPage(
+  db: D1Database,
+  slug: string | undefined,
+  isAdmin: boolean,
+): Promise<AccessibleStatusPage | undefined> {
+  return slug === undefined ? undefined : await resolveAccessibleStatusPage(db, slug, isAdmin);
+}
+
 export async function resolveDefaultPublicStatusPage(db: D1Database): Promise<PublicStatusPage> {
   return await resolvePublicStatusPage(db, 'default');
+}
+
+export async function resolveAccessibleStatusPageById(
+  db: D1Database,
+  id: number,
+  isAdmin: boolean,
+): Promise<AccessibleStatusPage> {
+  const row = await db
+    .prepare(
+      `
+        SELECT id, slug, name, title, description, custom_hostname, is_public
+        FROM status_pages
+        WHERE id = ?1
+      `,
+    )
+    .bind(id)
+    .first<StatusPageRow>();
+  if (!row || (row.is_public === 0 && !isAdmin)) {
+    throw new AppError(404, 'NOT_FOUND', 'Status page not found');
+  }
+
+  const { is_public, ...page } = row;
+  return { ...page, is_private: is_public === 0 };
 }
 
 export async function resolvePublicStatusPageById(
