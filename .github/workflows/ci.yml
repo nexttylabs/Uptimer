@@ -45,7 +45,10 @@ jobs:
       matrix:
         node: ['22.14.0', '24']
     steps:
+      # Full history: the changeset check needs the merge base with master.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
         with:
