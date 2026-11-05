@@ -210,6 +210,36 @@ Default addresses:
 | [Notification System](docs/notifications.md) ([中文](docs/notifications.zh-CN.md))                         | Webhook setup, templates, signatures, troubleshooting      |
 | [Local Development](Develop/LOCAL-TESTING.md)                                                              | Local setup, seed data, testing procedures                 |
 
+## Agent Configuration CLI
+
+Uptimer provides `uptimer-cli` (`apps/cli`) for coding agents and terminal automation to manage configuration via existing Admin APIs. After the first npm release, install it with `npm install --global uptimer-cli` and run `uptimer --help`.
+
+The [CLI release guide](docs/cli-releases.md) explains Changesets, release PRs, npm authentication, and GitHub Releases. To add a version note for a CLI change, run `pnpm changeset`.
+
+### Usage
+
+Set the instance URL and Admin Token in your environment:
+
+```bash
+export UPTIMER_URL="https://your-uptimer-worker.workers.dev" # or http://localhost:8787 for local dev
+export UPTIMER_ADMIN_TOKEN="your-admin-token"
+```
+
+Run commands:
+
+```bash
+# View discoverable help without credentials
+pnpm --filter uptimer-cli start --help
+
+# Machine/agent JSON consumption (suppress package manager logs)
+pnpm --silent --filter uptimer-cli start monitors list --limit 20
+
+# Direct Node execution for absolute stdout control
+node --experimental-strip-types apps/cli/src/index.ts settings get
+```
+
+Output is a sanitized/redacted management view; credentials and sensitive headers/payloads are masked with `[REDACTED]`. Returned configuration remains administrative and should not be published.
+
 ## Quality Checks
 
 ```bash
