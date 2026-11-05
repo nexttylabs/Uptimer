@@ -19,6 +19,9 @@ build
 # Local-only agent / ops notes
 Develop/Local-Development-Experience.md
 
+# Immune-Brain worktree-local authority state
+/.imm/state/
+
 # Local temp / perf evidence
 /tmp/
 .ralph/
