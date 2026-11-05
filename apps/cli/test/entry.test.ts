@@ -11,14 +11,11 @@ import { run } from '../src/index.ts';
 const entryPath = fileURLToPath(new URL('../src/index.ts', import.meta.url));
 
 function runSpawn(args: string[], env: Record<string, string> = {}) {
-  const result = spawnSync(
-    'node',
-    ['--experimental-strip-types', entryPath, ...args],
-    {
-      env: { ...process.env, ...env },
-      encoding: 'utf8',
-    },
-  );
+  const result = spawnSync('node', ['--experimental-strip-types', entryPath, ...args], {
+    // Node 22 warns on stderr about experimental type stripping; tests parse stderr.
+    env: { ...process.env, NODE_NO_WARNINGS: '1', ...env },
+    encoding: 'utf8',
+  });
   return {
     status: result.status,
     stdout: result.stdout,
@@ -78,10 +75,23 @@ test('CLI entry - help is available without credentials and exits 0', () => {
     assert.match(res.stdout, /EXIT CODES & OUTPUT/);
 
     // Examples must use live API field names, not the retired ones.
-    for (const field of ['"target":', '"interval_sec":', '"timeout_ms":', '"http_method":', '"config_json":', '"retention_check_results_days":']) {
+    for (const field of [
+      '"target":',
+      '"interval_sec":',
+      '"timeout_ms":',
+      '"http_method":',
+      '"config_json":',
+      '"retention_check_results_days":',
+    ]) {
       assert.ok(res.stdout.includes(field), `help examples must document ${field}`);
     }
-    for (const retired of ['"url": "https://api.example.com/health"', '"interval_seconds":', '"timeout_seconds":', '"expected_status_codes":', '"retention_days":']) {
+    for (const retired of [
+      '"url": "https://api.example.com/health"',
+      '"interval_seconds":',
+      '"timeout_seconds":',
+      '"expected_status_codes":',
+      '"retention_days":',
+    ]) {
       assert.ok(!res.stdout.includes(retired), `help examples must not document ${retired}`);
     }
   }
@@ -157,7 +167,11 @@ test('CLI runner - missing required body (--file) exits 2 before making requests
       io,
       dummyFetch,
     );
-    assert.equal(code, 2, `Command ${cmd.join(' ')} should fail with exit code 2 when --file is missing`);
+    assert.equal(
+      code,
+      2,
+      `Command ${cmd.join(' ')} should fail with exit code 2 when --file is missing`,
+    );
     assert.equal(io.stdoutData, '');
     const errObj = JSON.parse(io.stderrData);
     assert.equal(errObj.error.code, 'INVALID_ARGUMENT');

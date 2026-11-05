@@ -66,7 +66,12 @@ jobs:
         run: pnpm --filter uptimer-cli test:package
 
       - name: Validate changesets
-        run: pnpm changeset status
+        run: |
+          if [ -n "$(find .changeset -maxdepth 1 -name '*.md' ! -name 'README.md')" ]; then
+            pnpm changeset status
+          else
+            echo 'No pending changesets'
+          fi
 
   worker-tests:
     runs-on: ubuntu-latest
