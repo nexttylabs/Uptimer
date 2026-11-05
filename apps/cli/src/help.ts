@@ -1,7 +1,69 @@
+const example = (value: Record<string, unknown>): string =>
+  JSON.stringify(value, null, 2)
+    .split('\n')
+    .map((line) => `    ${line}`)
+    .join('\n');
+
+const HTTP_MONITOR = example({
+  name: 'Production API',
+  type: 'http',
+  target: 'https://api.example.com/health',
+  interval_sec: 60,
+  timeout_ms: 5000,
+  http_method: 'GET',
+  expected_status_json: [200],
+});
+
+const TCP_MONITOR = example({
+  name: 'Database Port',
+  type: 'tcp',
+  target: 'db.example.com:5432',
+  interval_sec: 60,
+  timeout_ms: 5000,
+});
+
+const WEBHOOK_CHANNEL = example({
+  name: 'Operations Webhook',
+  type: 'webhook',
+  config_json: {
+    preset: 'custom',
+    url: 'https://hooks.example.com/uptimer',
+    method: 'POST',
+    payload_type: 'json',
+    payload_template: { text: '{{message}}' },
+  },
+});
+
+const TELEGRAM_CHANNEL = example({
+  name: 'Telegram Alerts',
+  type: 'webhook',
+  config_json: {
+    preset: 'telegram',
+    chat_id: '@status_channel',
+    bot_token_secret_ref: 'UPTIMER_TELEGRAM_BOT_TOKEN',
+  },
+});
+
+const STATUS_PAGE = example({
+  slug: 'public-status',
+  name: 'Public Status',
+  title: 'Service status',
+  is_public: true,
+  monitor_ids: [1, 2],
+});
+
+const SETTINGS = example({
+  site_timezone: 'Asia/Shanghai',
+  site_locale: 'en',
+  retention_check_results_days: 7,
+});
+
+const UPTIME_RATING = example({ uptime_rating_level: 4 });
+
 export function getHelpText(): string {
   return `Uptimer Agent Configuration CLI (uptimer-cli)
 
-A repository-local CLI for coding agents and terminal automation to manage Uptimer
+A CLI for coding agents and terminal automation to manage Uptimer
 configuration via existing Admin APIs.
 
 USAGE:
@@ -44,14 +106,20 @@ COMMANDS:
     get                                Retrieve uptime rating level (1-5).
     update --file <file|->             Update uptime rating level (PUT).
 
+  skill
+    install [--dir <path>] [--force]   Install the agent skill locally (default dir: ./skills).
+
 OPTIONS:
   --file <path|->     Path to a UTF-8 JSON file containing the payload object, or '-' for stdin.
   --limit <number>    Max items to return for list operations (1-200, default 50).
+  --dir <path>        Base directory for "skill install"; the skill is written to <path>/uptimer-cli.
+  --force             Replace an existing "skill install" target.
   --help, -h          Show this help text without requiring credentials.
 
 PAYLOAD FORMAT:
   All payload inputs via --file must be valid UTF-8 JSON objects.
   PATCH update operations preserve field values; explicit null, false, 0, [], and omissions are respected.
+  Each option may be given at most once.
 
 BOUNDED LIST INVENTORY:
   List commands return up to --limit items (1-200, default 50).
@@ -59,65 +127,25 @@ BOUNDED LIST INVENTORY:
 
 PAYLOAD EXAMPLES:
   HTTP Monitor:
-    {
-      "name": "Production API",
-      "type": "http",
-      "url": "https://api.example.com/health",
-      "method": "GET",
-      "interval_seconds": 60,
-      "timeout_seconds": 10,
-      "expected_status_codes": ["200-299"]
-    }
+${HTTP_MONITOR}
 
-  TCP Monitor:
-    {
-      "name": "Database Port",
-      "type": "tcp",
-      "hostname": "db.example.com",
-      "port": 5432,
-      "interval_seconds": 60,
-      "timeout_seconds": 5
-    }
+  TCP Monitor (target is host:port):
+${TCP_MONITOR}
 
-  Webhook Notification Channel:
-    {
-      "name": "Discord Webhook",
-      "type": "webhook",
-      "config": {
-        "url": "https://discord.com/api/webhooks/...",
-        "headers": { "Content-Type": "application/json" },
-        "payload_template": "{\\"content\\": \\"Monitor $MONITOR_NAME is $STATUS\\"}"
-      }
-    }
+  Custom Webhook Channel:
+${WEBHOOK_CHANNEL}
 
-  Telegram Notification Channel:
-    {
-      "name": "Telegram Alert",
-      "type": "telegram",
-      "config": {
-        "chat_id": "123456789",
-        "bot_token_secret_ref": "TELEGRAM_BOT_TOKEN"
-      }
-    }
+  Telegram Channel (type stays "webhook"):
+${TELEGRAM_CHANNEL}
 
   Status Page:
-    {
-      "title": "Public Status",
-      "slug": "main",
-      "is_public": true,
-      "monitor_ids": [1, 2]
-    }
+${STATUS_PAGE}
 
-  General Settings:
-    {
-      "site_title": "Custom Uptimer",
-      "retention_days": 90
-    }
+  Global Settings:
+${SETTINGS}
 
   Uptime Rating:
-    {
-      "uptime_rating_level": 4
-    }
+${UPTIME_RATING}
 
 EXIT CODES & OUTPUT:
   0: Success. Single JSON value printed to stdout followed by newline. (Help is the only human text).
@@ -125,8 +153,19 @@ EXIT CODES & OUTPUT:
   2: Usage, input, local validation, or environment configuration failure. Emits JSON error envelope to stderr.
 
 SECURITY & REDACTION:
-  Output is a sanitized/redacted management view; credentials and sensitive keys/payloads
-  (such as authorization headers, tokens, passwords, cookies) are replaced with [REDACTED].
+  Output is a sanitized/redacted management view: credentials, header/body blobs, and
+  notification channel URLs, headers, and payload templates are replaced with [REDACTED].
   Returned configuration is administrative data and should not be published.
 `;
 }
+
+// Payload examples are contract surfaces; keep them valid against the server schemas.
+export const HELP_PAYLOAD_EXAMPLES: Record<string, string> = {
+  httpMonitor: HTTP_MONITOR,
+  tcpMonitor: TCP_MONITOR,
+  webhookChannel: WEBHOOK_CHANNEL,
+  telegramChannel: TELEGRAM_CHANNEL,
+  statusPage: STATUS_PAGE,
+  settings: SETTINGS,
+  uptimeRating: UPTIME_RATING,
+};

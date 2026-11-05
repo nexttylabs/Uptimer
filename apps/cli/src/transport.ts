@@ -74,12 +74,22 @@ export function validateEnvironment(env: Record<string, string | undefined> = pr
   };
 }
 
+// Transport failures keep their stable error code and drop the message, which can
+// embed request detail; the CLI must never echo transport text verbatim.
+function networkError(err: unknown, action: string): CliError {
+  const code = (err as { code?: unknown } | null)?.code;
+  const reason = typeof code === 'string' ? ` (${code})` : '';
+  return new CliError(1, 'NETWORK_ERROR', `${action}${reason}`);
+}
+
+function discardBody(response: Response): void {
+  // Fire-and-forget: a stream whose cancellation never settles must not block exit.
+  void response.body?.cancel().catch(() => {});
+}
+
 // Read the body ourselves so a deadline can cancel the stream; `response.text()`
 // would keep the reader locked and leak a stalled body.
-async function readBody(
-  response: Response,
-  deadline: Promise<never>,
-): Promise<string> {
+async function readBody(response: Response, deadline: Promise<never>): Promise<string> {
   if (!response.body) {
     return await Promise.race([response.text(), deadline]);
   }
@@ -94,7 +104,7 @@ async function readBody(
     }
     return text + decoder.decode();
   } catch (err) {
-    await reader.cancel().catch(() => {});
+    void reader.cancel().catch(() => {});
     throw err;
   }
 }
@@ -142,11 +152,11 @@ export async function executeApiRequest<T>(
       response = await Promise.race([fetchFn(url, init), deadline]);
     } catch (err: unknown) {
       if (err instanceof CliError) throw err;
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new CliError(1, 'NETWORK_ERROR', `Network request failed: ${msg}`);
+      throw networkError(err, 'Network request failed');
     }
 
     if (response.type === 'opaqueredirect' || (response.status >= 300 && response.status < 400)) {
+      discardBody(response);
       throw new CliError(1, 'REDIRECT_REJECTED', 'HTTP redirects are not allowed', response.status);
     }
 
@@ -155,8 +165,7 @@ export async function executeApiRequest<T>(
       text = await readBody(response, deadline);
     } catch (err: unknown) {
       if (err instanceof CliError) throw err;
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new CliError(1, 'NETWORK_ERROR', `Failed reading response body: ${msg}`);
+      throw networkError(err, 'Failed reading response body');
     }
 
     let parsed: unknown;

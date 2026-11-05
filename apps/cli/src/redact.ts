@@ -11,16 +11,17 @@ const SENSITIVE_KEYS = new Set([
   'api_key',
 ]);
 
-const COMPLETE_REDACT_KEYS = new Set([
-  'http_headers',
-  'http_body',
-]);
+// Monitor config blobs: arbitrary header/body values can carry credentials.
+const REDACT_ENTIRE_VALUE_KEYS = new Set(['http_headers', 'http_headers_json', 'http_body']);
 
-const CONFIG_SENSITIVE_KEYS = new Set([
-  'headers',
-  'url',
-  'payload_template',
-]);
+// Notification channel payloads arrive as `config_json` with the same shape as `config`.
+const CONFIG_CONTAINER_KEYS = new Set(['config', 'config_json']);
+
+const CONFIG_SENSITIVE_KEYS = new Set(['headers', 'url', 'payload_template']);
+
+function withoutToken(value: string, adminToken: string | undefined): string {
+  return adminToken && adminToken.length > 0 ? value.split(adminToken).join('[REDACTED]') : value;
+}
 
 export function redactCredentials(value: unknown, adminToken?: string, inConfig = false): unknown {
   if (value === null || value === undefined) {
@@ -28,10 +29,7 @@ export function redactCredentials(value: unknown, adminToken?: string, inConfig 
   }
 
   if (typeof value === 'string') {
-    if (adminToken && adminToken.length > 0) {
-      return value.split(adminToken).join('[REDACTED]');
-    }
-    return value;
+    return withoutToken(value, adminToken);
   }
 
   if (Array.isArray(value)) {
@@ -40,16 +38,18 @@ export function redactCredentials(value: unknown, adminToken?: string, inConfig 
 
   if (typeof value === 'object') {
     const result: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value)) {
-      const lower = k.toLowerCase();
-      if (inConfig && CONFIG_SENSITIVE_KEYS.has(lower)) {
-        result[k] = '[REDACTED]';
-      } else if (COMPLETE_REDACT_KEYS.has(lower)) {
-        result[k] = '[REDACTED]';
-      } else if (SENSITIVE_KEYS.has(lower)) {
-        result[k] = '[REDACTED]';
+    for (const [rawKey, rawValue] of Object.entries(value)) {
+      // Keys are attacker-controlled too: a reflected token can arrive as a key.
+      const key = withoutToken(rawKey, adminToken);
+      const lower = key.toLowerCase();
+      if (
+        REDACT_ENTIRE_VALUE_KEYS.has(lower) ||
+        SENSITIVE_KEYS.has(lower) ||
+        (inConfig && CONFIG_SENSITIVE_KEYS.has(lower))
+      ) {
+        result[key] = '[REDACTED]';
       } else {
-        result[k] = redactCredentials(v, adminToken, lower === 'config');
+        result[key] = redactCredentials(rawValue, adminToken, CONFIG_CONTAINER_KEYS.has(lower));
       }
     }
     return result;

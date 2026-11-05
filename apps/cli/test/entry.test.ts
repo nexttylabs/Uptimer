@@ -63,17 +63,27 @@ test('CLI entry - help is available without credentials and exits 0', () => {
     assert.match(res.stdout, /status-pages/);
     assert.match(res.stdout, /settings/);
     assert.match(res.stdout, /settings uptime-rating/);
+    assert.match(res.stdout, /skill\n +install/);
+    assert.match(res.stdout, /--dir <path>/);
     assert.match(res.stdout, /--file <path\|->/);
     assert.match(res.stdout, /1-200, default 50/);
     assert.match(res.stdout, /bounded slices and do not claim to represent a complete inventory/);
     assert.match(res.stdout, /HTTP Monitor:/);
-    assert.match(res.stdout, /TCP Monitor:/);
-    assert.match(res.stdout, /Webhook Notification Channel:/);
-    assert.match(res.stdout, /Telegram Notification Channel:/);
+    assert.match(res.stdout, /TCP Monitor \(target is host:port\):/);
+    assert.match(res.stdout, /Custom Webhook Channel:/);
+    assert.match(res.stdout, /Telegram Channel \(type stays "webhook"\):/);
     assert.match(res.stdout, /Status Page:/);
-    assert.match(res.stdout, /General Settings:/);
+    assert.match(res.stdout, /Global Settings:/);
     assert.match(res.stdout, /Uptime Rating:/);
     assert.match(res.stdout, /EXIT CODES & OUTPUT/);
+
+    // Examples must use live API field names, not the retired ones.
+    for (const field of ['"target":', '"interval_sec":', '"timeout_ms":', '"http_method":', '"config_json":', '"retention_check_results_days":']) {
+      assert.ok(res.stdout.includes(field), `help examples must document ${field}`);
+    }
+    for (const retired of ['"url": "https://api.example.com/health"', '"interval_seconds":', '"timeout_seconds":', '"expected_status_codes":', '"retention_days":']) {
+      assert.ok(!res.stdout.includes(retired), `help examples must not document ${retired}`);
+    }
   }
 });
 
@@ -272,5 +282,63 @@ test('CLI runner - body validation: non-object JSON payloads reject before reque
     }
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('CLI runner - malformed JSON is reported without echoing the payload', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'uptimer-cli-json-'));
+  try {
+    const file = path.join(tempDir, 'payload.json');
+    await fs.writeFile(file, '{"bot_token": FAKE_BOT_SECRET_123}', 'utf8');
+
+    const io = createCaptureIO();
+    const code = await run(
+      ['notification-channels', 'create', '--file', file],
+      { UPTIMER_URL: 'https://example.com', UPTIMER_ADMIN_TOKEN: 'secret' },
+      io,
+      async () => new Response('{}'),
+    );
+
+    assert.equal(code, 2);
+    const message = JSON.parse(io.stderrData).error.message as string;
+    assert.match(message, /^Malformed JSON in payload/);
+    assert.ok(!message.includes('FAKE_BOT_SECRET_123'), 'parser message must not quote input');
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('CLI runner - a repeated payload option is rejected instead of silently overwritten', async () => {
+  let fetchCalls = 0;
+  const io = createCaptureIO();
+  const code = await run(
+    ['settings', 'update', '--file', 'ignored.json', '--file', '-'],
+    { UPTIMER_URL: 'https://example.com', UPTIMER_ADMIN_TOKEN: 'secret' },
+    io,
+    async () => {
+      fetchCalls += 1;
+      return Response.json({ settings: {} });
+    },
+  );
+
+  assert.equal(code, 2);
+  assert.equal(fetchCalls, 0);
+  assert.match(JSON.parse(io.stderrData).error.message, /--file may only be given once/);
+});
+
+test('CLI runner - duplicate --limit and --dir are rejected', async () => {
+  for (const argv of [
+    ['monitors', 'list', '--limit', '10', '--limit', '20'],
+    ['skill', 'install', '--dir', 'first', '--dir', 'second'],
+  ]) {
+    const io = createCaptureIO();
+    const code = await run(
+      argv,
+      { UPTIMER_URL: 'https://example.com', UPTIMER_ADMIN_TOKEN: 'secret' },
+      io,
+      async () => Response.json({ monitors: [] }),
+    );
+    assert.equal(code, 2, argv.join(' '));
+    assert.match(JSON.parse(io.stderrData).error.message, /may only be given once/);
   }
 });

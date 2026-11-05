@@ -515,3 +515,27 @@ test('Resource operations - get/update round trip for settings and settings upti
     await fs.rm(tempDir, { recursive: true, force: true });
   }
 });
+
+test('Resource operations - unassigning a group succeeds with a null group_name', async () => {
+  const mockFetch: typeof fetch = async () =>
+    Response.json({ group_name: null, group_sort_order: 0, updated_monitors: 1 });
+
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'uptimer-group-null-'));
+  try {
+    const file = path.join(tempDir, 'assign.json');
+    await fs.writeFile(file, JSON.stringify({ monitor_ids: [7], group_name: null }), 'utf8');
+
+    const io = createCaptureIO();
+    const code = await run(
+      ['monitors', 'groups', 'assign', '--file', file],
+      { UPTIMER_URL: 'https://uptimer.example.com', UPTIMER_ADMIN_TOKEN: 'test-token' },
+      io,
+      mockFetch,
+    );
+
+    assert.equal(code, 0);
+    assert.equal(JSON.parse(io.stdoutData).group_name, null);
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+});

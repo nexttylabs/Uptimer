@@ -26,9 +26,10 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Trusted publishing needs a pnpm with OIDC support; 10.8.1 has none.
       - uses: pnpm/action-setup@v4
         with:
-          version: '10.8.1'
+          version: '10.34.9'
 
       # Use the current LTS toolchain for publishing and provenance.
       - uses: actions/setup-node@v4
@@ -48,6 +49,8 @@ jobs:
           pnpm --filter uptimer-cli test:package
           pnpm changeset status
 
+      # No npm token: the npm Trusted Publisher for this workflow authenticates
+      # the publish with a short-lived OIDC token, and provenance is automatic.
       - name: Create release PR or publish
         uses: changesets/action@v2.1.2
         with:
@@ -57,7 +60,3 @@ jobs:
           pr-title: 'chore: release uptimer-cli'
           commit-message: 'chore: release uptimer-cli'
           create-github-releases: true
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: 'true'

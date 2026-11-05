@@ -37,6 +37,18 @@ Successful commands write JSON to stdout. Errors write JSON to stderr and exit w
 
 The Admin Token has full management permissions. Treat all returned configuration as administrative data and keep it out of shared logs. A failed or timed-out write may already have reached the server; query before retrying.
 
+## Use from a coding agent
+
+This package ships an agent skill covering install checks, connection setup, payload field references, and a write-then-verify sequence. Install it locally without leaving the CLI:
+
+```sh
+uptimer skill install                 # ./skills/uptimer-cli/
+uptimer skill install --dir ~/.claude # ~/.claude/uptimer-cli/
+uptimer skill install --force         # replace an existing copy
+```
+
+The command needs no instance URL or token and prints the installed path and file list as JSON. Alternatively, `npx skills add nexttylabs/Uptimer --skill uptimer-cli` auto-detects installed agents (`-g` for global, `-a <agent>` for one target). The skill source lives in [`skills/uptimer-cli/`](../../skills/uptimer-cli/SKILL.md); its [command reference](../../skills/uptimer-cli/references/commands.md) adds field detail beyond the inline `--help` examples.
+
 ## Develop and release
 
 From the repository root:

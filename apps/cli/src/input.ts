@@ -21,16 +21,17 @@ export async function readJsonPayload(
         }
       }
       content = Buffer.concat(chunks).toString('utf8');
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new CliError(2, 'INVALID_ARGUMENT', `Failed to read payload from stdin: ${msg}`);
+    } catch {
+      throw new CliError(2, 'INVALID_ARGUMENT', 'Failed to read payload from stdin');
     }
   } else {
     try {
       content = await fs.readFile(filePath, 'utf8');
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new CliError(2, 'INVALID_ARGUMENT', `Failed to read payload file "${filePath}": ${msg}`);
+      // Report the OS error code only; messages can embed path or input details.
+      const code = (err as { code?: unknown } | null)?.code;
+      const reason = typeof code === 'string' ? ` (${code})` : '';
+      throw new CliError(2, 'INVALID_ARGUMENT', `Failed to read payload file "${filePath}"${reason}`);
     }
   }
 
@@ -38,8 +39,13 @@ export async function readJsonPayload(
   try {
     parsed = JSON.parse(content);
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new CliError(2, 'INVALID_ARGUMENT', `Malformed JSON in payload: ${msg}`);
+    // `JSON.parse` messages quote the offending input, which can hold secrets.
+    const position = /at position (\d+)/.exec(err instanceof Error ? err.message : '')?.[1];
+    throw new CliError(
+      2,
+      'INVALID_ARGUMENT',
+      `Malformed JSON in payload${position ? ` at position ${position}` : ''}`,
+    );
   }
 
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {

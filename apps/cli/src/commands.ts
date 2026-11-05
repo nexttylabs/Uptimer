@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { CliError } from './errors.ts';
 import { readJsonPayload } from './input.ts';
+import { installSkill } from './skill.ts';
 import { executeApiRequest, type TransportOptions } from './transport.ts';
 
 const monitorsListEnvelope = z.object({
@@ -21,7 +22,8 @@ const monitorGroupsReorderEnvelope = z.object({
 });
 
 const monitorGroupsAssignEnvelope = z.object({
-  group_name: z.string(),
+  // The server returns null when monitors are removed from a group.
+  group_name: z.string().nullable(),
   group_sort_order: z.number(),
   updated_monitors: z.number(),
 });
@@ -55,13 +57,24 @@ export interface ParsedCommand {
   options: {
     limit?: string | undefined;
     file?: string | undefined;
+    dir?: string | undefined;
+    force: boolean;
   };
   isHelp: boolean;
 }
 
+type CommandOptions = ParsedCommand['options'];
+
+// A repeated option silently changes the request (last value wins), so reject it.
+function assertUnset(value: string | undefined, option: string): void {
+  if (value !== undefined) {
+    throw new CliError(2, 'INVALID_ARGUMENT', `Option ${option} may only be given once`);
+  }
+}
+
 export function parseArgs(argv: string[]): ParsedCommand {
   const positionals: string[] = [];
-  const options: { limit?: string | undefined; file?: string | undefined } = {};
+  const options: CommandOptions = { force: false };
   let isHelp = false;
 
   for (let i = 0; i < argv.length; i++) {
@@ -70,11 +83,31 @@ export function parseArgs(argv: string[]): ParsedCommand {
       isHelp = true;
       continue;
     }
+    if (arg === '--force') {
+      options.force = true;
+      continue;
+    }
+    if (arg.startsWith('--dir=')) {
+      assertUnset(options.dir, '--dir');
+      options.dir = arg.slice(6);
+      continue;
+    }
+    if (arg === '--dir') {
+      assertUnset(options.dir, '--dir');
+      i++;
+      if (i >= argv.length) {
+        throw new CliError(2, 'INVALID_ARGUMENT', 'Option --dir requires a value');
+      }
+      options.dir = argv[i]!;
+      continue;
+    }
     if (arg.startsWith('--limit=')) {
+      assertUnset(options.limit, '--limit');
       options.limit = arg.slice(8);
       continue;
     }
     if (arg === '--limit') {
+      assertUnset(options.limit, '--limit');
       i++;
       if (i >= argv.length || argv[i]!.startsWith('--')) {
         throw new CliError(2, 'INVALID_ARGUMENT', 'Option --limit requires a value');
@@ -83,10 +116,12 @@ export function parseArgs(argv: string[]): ParsedCommand {
       continue;
     }
     if (arg.startsWith('--file=')) {
+      assertUnset(options.file, '--file');
       options.file = arg.slice(7);
       continue;
     }
     if (arg === '--file') {
+      assertUnset(options.file, '--file');
       i++;
       if (i >= argv.length) {
         throw new CliError(2, 'INVALID_ARGUMENT', 'Option --file requires a value');
@@ -143,6 +178,19 @@ export async function executeCommand(
   }
 
   const family = positionals[0]!;
+
+  if (family === 'skill') {
+    if (positionals[1] !== 'install') {
+      throw new CliError(2, 'INVALID_ARGUMENT', 'Use "skill install" to install the agent skill locally');
+    }
+    if (positionals.length > 2) {
+      throw new CliError(2, 'INVALID_ARGUMENT', `Unexpected positional argument: "${positionals[2]}"`);
+    }
+    if (options.file !== undefined || options.limit !== undefined) {
+      throw new CliError(2, 'INVALID_ARGUMENT', 'Options --file and --limit are not supported for skill install');
+    }
+    return await installSkill({ dir: options.dir ?? 'skills', force: options.force });
+  }
 
   if (family === 'monitors') {
     const action = positionals[1];

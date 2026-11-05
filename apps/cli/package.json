@@ -1,6 +1,6 @@
 {
   "name": "uptimer-cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Manage Uptimer configuration from coding agents and the terminal",
   "license": "MIT",
   "type": "module",
@@ -17,6 +17,7 @@
   },
   "files": [
     "dist",
+    "skill",
     "LICENSE",
     "README.md",
     "CHANGELOG.md"
@@ -27,9 +28,9 @@
   "scripts": {
     "start": "node --experimental-strip-types src/index.ts",
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
-    "prepack": "pnpm build",
-    "test:package": "pnpm build && node --experimental-strip-types --test test/package.test.ts",
-    "test": "node --experimental-strip-types --test test/entry.test.ts test/resources.test.ts test/transport.test.ts",
+    "prepack": "pnpm build && node scripts/prepare-skill.mjs",
+    "test:package": "pnpm prepack && node --experimental-strip-types --test test/package.test.ts",
+    "test": "node --experimental-strip-types --test test/entry.test.ts test/resources.test.ts test/transport.test.ts test/skill.test.ts",
     "lint": "pnpm -w exec eslint --config eslint.config.mjs apps/cli",
     "typecheck": "pnpm -w exec tsc -p apps/cli/tsconfig.json --noEmit"
   },

@@ -239,7 +239,9 @@ test('Transport - Fetch network failure, whole-response deadline timeout, and si
   {
     const io = createCaptureIO();
     const mockFetch: typeof fetch = async () => {
-      throw new Error('connect ECONNREFUSED 127.0.0.1:8787');
+      const error = new Error('connect ECONNREFUSED with password=FAKE_TRANSPORT_SECRET');
+      (error as Error & { code?: string }).code = 'ECONNREFUSED';
+      throw error;
     };
     const code = await run(
       ['settings', 'get'],
@@ -251,7 +253,8 @@ test('Transport - Fetch network failure, whole-response deadline timeout, and si
     assert.equal(io.stdoutData, '');
     const errObj = JSON.parse(io.stderrData);
     assert.equal(errObj.error.code, 'NETWORK_ERROR');
-    assert.match(errObj.error.message, /ECONNREFUSED/);
+    assert.equal(errObj.error.message, 'Network request failed (ECONNREFUSED)');
+    assert.ok(!io.stderrData.includes('FAKE_TRANSPORT_SECRET'));
   }
 
   // 2. Deadline exceeded during response body consumption
@@ -334,6 +337,7 @@ test('Transport - Credential redaction on both stdout success and stderr error p
         cookie: 'session=123',
         // Complete redacted values
         http_headers: { 'X-Secret': 'private' },
+        http_headers_json: { 'X-Api-Key': 'FAKE_MONITOR_HEADER_SECRET' },
         http_body: 'sensitive payload',
         // Config sensitive keys
         config: {
@@ -342,6 +346,13 @@ test('Transport - Credential redaction on both stdout success and stderr error p
           payload_template: '{"token": "$SECRET"}',
         },
         // Non-sensitive fields & secret references that MUST remain readable
+        config_json: {
+          preset: 'custom',
+          url: 'https://hooks.example.com/FAKE_HOOK_SECRET',
+          headers: { 'X-Api-Key': 'FAKE_CHANNEL_HEADER_SECRET' },
+          payload_template: { text: 'FAKE_TEMPLATE_SECRET' },
+          chat_id: '@visible_channel',
+        },
         bot_token_secret_ref: 'MY_TELEGRAM_SECRET_BINDING',
         signing_secret_ref: 'WEBHOOK_SIGNING_SECRET',
         status: 'active',
@@ -366,6 +377,9 @@ test('Transport - Credential redaction on both stdout success and stderr error p
 
     const stdout = io.stdoutData;
     assert.ok(!stdout.includes(adminToken), 'Admin token must never appear in stdout');
+    for (const leaked of ['FAKE_MONITOR_HEADER_SECRET', 'FAKE_HOOK_SECRET', 'FAKE_CHANNEL_HEADER_SECRET', 'FAKE_TEMPLATE_SECRET']) {
+      assert.ok(!stdout.includes(leaked), `stdout must not contain ${leaked}`);
+    }
     const result = JSON.parse(stdout);
     const s = result.settings;
 
@@ -378,6 +392,12 @@ test('Transport - Credential redaction on both stdout success and stderr error p
     assert.equal(s.api_key, '[REDACTED]');
     assert.equal(s.cookie, '[REDACTED]');
     assert.equal(s.http_headers, '[REDACTED]');
+    assert.equal(s.http_headers_json, '[REDACTED]');
+    assert.equal(s.config_json.url, '[REDACTED]');
+    assert.equal(s.config_json.headers, '[REDACTED]');
+    assert.equal(s.config_json.payload_template, '[REDACTED]');
+    assert.equal(s.config_json.chat_id, '@visible_channel');
+    assert.equal(s.config_json.preset, 'custom');
     assert.equal(s.http_body, '[REDACTED]');
     assert.equal(s.config.url, '[REDACTED]');
     assert.equal(s.config.headers, '[REDACTED]');
@@ -423,4 +443,80 @@ test('Transport - Credential redaction on both stdout success and stderr error p
     assert.equal(errObj.error.message, 'Token [REDACTED] was rejected by server');
     assert.equal(errObj.error.status, 401);
   }
+});
+
+test('Transport - reflected credential keys are redacted', async () => {
+  const adminToken = 'FAKE_REFLECTED_ADMIN_TOKEN';
+  const mockFetch: typeof fetch = async () =>
+    Response.json({ settings: { [adminToken]: 'value', site_locale: 'en' } });
+
+  const io = createCaptureIO();
+  const code = await run(
+    ['settings', 'get'],
+    { UPTIMER_URL: 'https://example.com', UPTIMER_ADMIN_TOKEN: adminToken },
+    io,
+    mockFetch,
+  );
+
+  assert.equal(code, 0);
+  assert.ok(!io.stdoutData.includes(adminToken), 'token must not survive as an object key');
+  assert.deepEqual(JSON.parse(io.stdoutData).settings, { '[REDACTED]': 'value', site_locale: 'en' });
+});
+
+test('Transport - redirected responses release their body', async () => {
+  let cancelled = false;
+  const mockFetch: typeof fetch = async () =>
+    new Response(
+      new ReadableStream({
+        cancel() {
+          cancelled = true;
+        },
+      }),
+      { status: 302, headers: { Location: 'https://other.example.com' } },
+    );
+
+  const io = createCaptureIO();
+  const code = await run(
+    ['settings', 'get'],
+    { UPTIMER_URL: 'https://example.com', UPTIMER_ADMIN_TOKEN: 'token' },
+    io,
+    mockFetch,
+  );
+
+  assert.equal(code, 1);
+  assert.equal(JSON.parse(io.stderrData).error.code, 'REDIRECT_REJECTED');
+  assert.equal(cancelled, true, 'rejected redirect must cancel its body');
+});
+
+test('Transport - a stalled body whose cancellation never settles still exits', async () => {
+  const mockFetch: typeof fetch = async () =>
+    new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('{"settings":'));
+        },
+        cancel() {
+          return new Promise<void>(() => {});
+        },
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
+
+  const io = createCaptureIO();
+  const runPromise = run({
+    argv: ['settings', 'get'],
+    env: { UPTIMER_URL: 'https://example.com', UPTIMER_ADMIN_TOKEN: 'token' },
+    stdout: io.stdout,
+    stderr: io.stderr,
+    fetchFn: mockFetch,
+    timeoutMs: 20,
+  });
+
+  const outcome = await Promise.race([
+    runPromise,
+    new Promise<'hung'>((resolve) => setTimeout(() => resolve('hung'), 1_000)),
+  ]);
+
+  assert.equal(outcome, 1, 'deadline must terminate even when stream cancellation never settles');
+  assert.equal(JSON.parse(io.stderrData).error.code, 'TIMEOUT');
 });

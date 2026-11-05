@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
@@ -35,6 +35,8 @@ test('npm tarball installs offline and runs its linked executable outside the re
     const cli = pack(packageRoot);
     const files = cli.files.map((file) => file.path);
     assert.ok(files.includes('dist/index.js'));
+    assert.ok(files.includes('skill/SKILL.md'));
+    assert.ok(files.includes('skill/references/commands.md'));
     assert.ok(files.includes('README.md'));
     assert.ok(files.includes('LICENSE'));
     assert.ok(files.every((file) => !/^(src|test|node_modules)\//.test(file)));
@@ -77,6 +79,18 @@ test('npm tarball installs offline and runs its linked executable outside the re
     assert.equal(missingCredentials.status, 2);
     assert.equal(missingCredentials.stdout, '');
     assert.equal(JSON.parse(missingCredentials.stderr).error.code, 'CONFIGURATION_ERROR');
+
+    // The packaged copy is what `uptimer skill install` ships to users.
+    const skillsDir = join(temp, 'agent-skills');
+    const skillInstall = spawnSync(bin, ['skill', 'install', '--dir', skillsDir], options);
+    assert.ifError(skillInstall.error);
+    assert.equal(skillInstall.status, 0, skillInstall.stderr);
+    assert.equal(JSON.parse(skillInstall.stdout).path, join(skillsDir, 'uptimer-cli'));
+    assert.match(
+      readFileSync(join(skillsDir, 'uptimer-cli/SKILL.md'), 'utf8'),
+      /name: uptimer-cli/,
+    );
+    assert.ok(existsSync(join(skillsDir, 'uptimer-cli/references/commands.md')));
   } finally {
     rmSync(temp, { recursive: true, force: true });
   }
