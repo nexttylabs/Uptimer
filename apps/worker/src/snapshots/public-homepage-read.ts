@@ -2,6 +2,7 @@ import { AppError } from '../middleware/errors';
 import {
   type PublicHomepageResponse,
 } from '../schemas/public-homepage';
+import { DEFAULT_STATUS_PAGE_THEME_CONFIG } from '../schemas/status-pages';
 import {
   publicHomepageStoredRenderArtifactSchema,
   storedPublicHomepageResponseSchema,
@@ -155,7 +156,9 @@ function parseJsonText(text: string): ParsedJsonText | null {
 function parseDirectHomepagePayload(value: unknown): PublicHomepageResponse | null {
   const storedPayload = storedPublicHomepageResponseSchema.safeParse(value);
   if (storedPayload.success) {
-    return storedPayload.data;
+    return storedPayload.data.theme_config === undefined
+      ? { ...storedPayload.data, theme_config: { ...DEFAULT_STATUS_PAGE_THEME_CONFIG } }
+      : storedPayload.data;
   }
   if (!isRecord(value)) {
     return null;
@@ -171,6 +174,7 @@ function parseDirectHomepagePayload(value: unknown): PublicHomepageResponse | nu
     site_title: value.site_title,
     site_description: value.site_description,
     logo_url: value.logo_url ?? null,
+    theme_config: value.theme_config ?? { ...DEFAULT_STATUS_PAGE_THEME_CONFIG },
     site_locale: value.site_locale,
     site_timezone: value.site_timezone,
     uptime_rating_level: value.uptime_rating_level,

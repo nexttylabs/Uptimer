@@ -3,6 +3,10 @@ import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { useI18n } from '../app/I18nContext';
+import {
+  resolveStatusPageFooter,
+  useApplyStatusPageCustomCss,
+} from '../app/statusPageTheme';
 import { useApplyServerLocaleSetting } from '../app/useApplyServerLocaleSetting';
 import { useStatusPageSlug } from '../app/StatusPageSlugContext';
 import {
@@ -17,6 +21,7 @@ import type {
   IncidentSummary,
   Outage,
   PublicHomepageResponse,
+  StatusPageThemeConfig,
 } from '../api/types';
 import { DayDowntimeModal } from '../components/DayDowntimeModal';
 import { Markdown } from '../components/Markdown';
@@ -27,6 +32,24 @@ import { Badge, Card, MODAL_OVERLAY_CLASS, MODAL_PANEL_CLASS, ThemeToggle } from
 
 type BannerStatus = PublicHomepageResponse['banner']['status'];
 type IncidentCardData = IncidentSummary | Incident;
+
+export function StatusPageFooter({
+  themeConfig,
+  defaultPoweredByText,
+}: {
+  themeConfig?: StatusPageThemeConfig | undefined;
+  defaultPoweredByText: string;
+}) {
+  const footer = resolveStatusPageFooter(themeConfig, defaultPoweredByText);
+  if (!footer.visible) return null;
+  return (
+    <footer className="border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-800">
+      <div className="mx-auto max-w-5xl px-4 py-3 text-center text-sm text-slate-400 dark:text-slate-500 sm:px-6 sm:py-4 lg:px-8">
+        {footer.text}
+      </div>
+    </footer>
+  );
+}
 
 const LatencyChart = lazy(async () => {
   const mod = await import('../components/LatencyChart');
@@ -390,6 +413,7 @@ export function StatusPage() {
   const derivedTimeZone = getBrowserTimeZone() || homepageQuery.data?.site_timezone || 'UTC';
 
   useApplyServerLocaleSetting(homepageQuery.data?.site_locale);
+  useApplyStatusPageCustomCss(homepageQuery.data?.theme_config?.custom_css, slug ?? 'default');
 
   useEffect(() => {
     document.title = derivedTitle;
@@ -795,11 +819,10 @@ export function StatusPage() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-800">
-        <div className="mx-auto max-w-5xl px-4 py-3 text-center text-sm text-slate-400 dark:text-slate-500 sm:px-6 sm:py-4 lg:px-8">
-          {t('status_page.powered_by', { value: siteTitle })}
-        </div>
-      </footer>
+      <StatusPageFooter
+        themeConfig={data.theme_config}
+        defaultPoweredByText={t('status_page.powered_by', { value: siteTitle })}
+      />
 
       {/* Modals */}
       {selectedMonitorId !== null && (

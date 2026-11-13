@@ -1,4 +1,8 @@
 import type { PublicStatusResponse } from '../schemas/public-status';
+import {
+  parseStoredThemeConfigJson,
+  type StatusPageThemeConfig,
+} from '../schemas/status-pages';
 import { readStatusSnapshotPayloadAnyAge } from '../snapshots/public-status-read';
 import type { SettingsResponse } from '../settings';
 
@@ -36,6 +40,7 @@ type StatusPublicSettings = SettingsResponse['settings'] & {
   site_title: string;
   site_description: string;
   logo_url: string | null;
+  theme_config: StatusPageThemeConfig;
 };
 type StatusMonitorMetadataStamp = {
   monitorCountTotal: number;
@@ -137,6 +142,7 @@ function normalizeStatusFastGuardSettings(row: {
   site_title_value: string | null | undefined;
   site_description_value: string | null | undefined;
   logo_url_value: string | null | undefined;
+  theme_config_json_value: string | null | undefined;
   site_locale_value: string | null | undefined;
   site_timezone_value: string | null | undefined;
   uptime_rating_level_value: string | null | undefined;
@@ -154,6 +160,7 @@ function normalizeStatusFastGuardSettings(row: {
       allowEmpty: true,
     }),
     logo_url: normalizeStatusFastGuardOptionalUrl(row.logo_url_value),
+    theme_config: parseStoredThemeConfigJson(row.theme_config_json_value),
     site_locale: STATUS_FAST_PUBLIC_LOCALES.has(
       (row.site_locale_value ?? '') as StatusPublicSettings['site_locale'],
     )
@@ -183,6 +190,9 @@ function hasMatchingStatusPublicSettings(
     baseSnapshot.site_title === settings.site_title &&
     baseSnapshot.site_description === settings.site_description &&
     baseSnapshot.logo_url === settings.logo_url &&
+    baseSnapshot.theme_config.custom_css === settings.theme_config.custom_css &&
+    baseSnapshot.theme_config.footer_hidden === settings.theme_config.footer_hidden &&
+    baseSnapshot.theme_config.footer_text === settings.theme_config.footer_text &&
     baseSnapshot.site_locale === settings.site_locale &&
     baseSnapshot.site_timezone === settings.site_timezone &&
     baseSnapshot.uptime_rating_level === settings.uptime_rating_level
@@ -662,6 +672,11 @@ async function readStatusScheduledFastGuardState(
               WHERE slug = 'default' AND is_public = 1
             ) AS logo_url_value,
             (
+              SELECT theme_config_json
+              FROM status_pages
+              WHERE slug = 'default' AND is_public = 1
+            ) AS theme_config_json_value,
+            (
               SELECT value
               FROM settings
               WHERE key = 'site_locale'
@@ -717,6 +732,7 @@ async function readStatusScheduledFastGuardState(
       site_title_value: string | null;
       site_description_value: string | null;
       logo_url_value: string | null;
+      theme_config_json_value: string | null;
       site_locale_value: string | null;
       site_timezone_value: string | null;
       uptime_rating_level_value: string | null;
@@ -732,6 +748,7 @@ async function readStatusScheduledFastGuardState(
       site_title_value: row?.site_title_value,
       site_description_value: row?.site_description_value,
       logo_url_value: row?.logo_url_value,
+      theme_config_json_value: row?.theme_config_json_value,
       site_locale_value: row?.site_locale_value,
       site_timezone_value: row?.site_timezone_value,
       uptime_rating_level_value: row?.uptime_rating_level_value,

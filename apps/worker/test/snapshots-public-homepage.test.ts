@@ -43,6 +43,7 @@ function samplePayload(now = 1_728_000_000) {
     site_title: 'Uptimer',
     site_description: '',
     logo_url: null,
+    theme_config: { custom_css: null, footer_hidden: false, footer_text: null },
     site_locale: 'auto' as const,
     site_timezone: 'UTC',
     uptime_rating_level: 3 as const,

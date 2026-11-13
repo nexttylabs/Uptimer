@@ -7,6 +7,7 @@ import { AuthProvider } from './app/AuthContext';
 import { I18nProvider } from './app/I18nContext';
 import { queryClient } from './app/queryClient';
 import { router } from './app/router';
+import { homepageFromStatus } from './app/statusPageTheme';
 import { ThemeProvider } from './app/ThemeContext';
 import type { PublicHomepageResponse, StatusResponse } from './api/types';
 import './styles.css';
@@ -24,20 +25,6 @@ type PersistedHomepageCache = {
   at: number;
   value: PublicHomepageResponse;
 };
-
-function toHeartbeatStatusCode(status: StatusResponse['monitors'][number]['heartbeats'][number]['status']) {
-  switch (status) {
-    case 'up':
-      return 'u';
-    case 'down':
-      return 'd';
-    case 'maintenance':
-      return 'm';
-    case 'unknown':
-    default:
-      return 'x';
-  }
-}
 
 function readPersistedHomepageCache(): PublicHomepageResponse | null {
   try {
@@ -81,78 +68,6 @@ function writePersistedHomepageCache(value: PublicHomepageResponse): void {
   } catch {
     // Best-effort only.
   }
-}
-
-function homepageFromStatus(status: StatusResponse): PublicHomepageResponse {
-  return {
-    generated_at: status.generated_at,
-    bootstrap_mode: 'full',
-    monitor_count_total: status.monitors.length,
-    site_title: status.site_title,
-    site_description: status.site_description,
-    logo_url: status.logo_url,
-    site_locale: status.site_locale,
-    site_timezone: status.site_timezone,
-    uptime_rating_level: status.uptime_rating_level,
-    overall_status: status.overall_status,
-    banner: status.banner,
-    summary: status.summary,
-    monitors: status.monitors.map((monitor) => ({
-      id: monitor.id,
-      name: monitor.name,
-      type: monitor.type,
-      display_url: monitor.display_url ?? null,
-      group_name: monitor.group_name,
-      status: monitor.status,
-      is_stale: monitor.is_stale,
-      last_checked_at: monitor.last_checked_at,
-      heartbeat_strip: {
-        checked_at: monitor.heartbeats.map((heartbeat) => heartbeat.checked_at),
-        status_codes: monitor.heartbeats
-          .map((heartbeat) => toHeartbeatStatusCode(heartbeat.status))
-          .join(''),
-        latency_ms: monitor.heartbeats.map((heartbeat) => heartbeat.latency_ms),
-      },
-      uptime_30d: monitor.uptime_30d ? { uptime_pct: monitor.uptime_30d.uptime_pct } : null,
-      uptime_day_strip: {
-        day_start_at: monitor.uptime_days.map((day) => day.day_start_at),
-        downtime_sec: monitor.uptime_days.map((day) => day.downtime_sec),
-        unknown_sec: monitor.uptime_days.map((day) => day.unknown_sec),
-        uptime_pct_milli: monitor.uptime_days.map((day) =>
-          day.uptime_pct === null ? null : Math.round(day.uptime_pct * 1000),
-        ),
-      },
-    })),
-    active_incidents: status.active_incidents.map((incident) => ({
-      id: incident.id,
-      title: incident.title,
-      status: incident.status,
-      impact: incident.impact,
-      message: incident.message,
-      started_at: incident.started_at,
-      resolved_at: incident.resolved_at,
-    })),
-    maintenance_windows: {
-      active: status.maintenance_windows.active.map((window) => ({
-        id: window.id,
-        title: window.title,
-        message: window.message,
-        starts_at: window.starts_at,
-        ends_at: window.ends_at,
-        monitor_ids: window.monitor_ids,
-      })),
-      upcoming: status.maintenance_windows.upcoming.map((window) => ({
-        id: window.id,
-        title: window.title,
-        message: window.message,
-        starts_at: window.starts_at,
-        ends_at: window.ends_at,
-        monitor_ids: window.monitor_ids,
-      })),
-    },
-    resolved_incident_preview: null,
-    maintenance_history_preview: null,
-  };
 }
 
 const initialHomepage =

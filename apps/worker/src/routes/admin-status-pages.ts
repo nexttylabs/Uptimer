@@ -3,7 +3,16 @@ import { z } from 'zod';
 
 import type { Env } from '../env';
 import { AppError } from '../middleware/errors';
-import { createStatusPageInputSchema, patchStatusPageInputSchema, normalizeCustomHostname, parseLogoUrlInput } from '../schemas/status-pages';
+import {
+  createStatusPageInputSchema,
+  DEFAULT_STATUS_PAGE_THEME_CONFIG,
+  normalizeCustomHostname,
+  parseLogoUrlInput,
+  parseStoredThemeConfigJson,
+  patchStatusPageInputSchema,
+  resolveThemeConfigInput,
+  serializeThemeConfigJson,
+} from '../schemas/status-pages';
 import { enqueueStatusPageRefreshes } from '../snapshots/status-page-refresh-queue';
 
 function validateCustomHostname(value: string | null): string | null {
@@ -39,6 +48,7 @@ type StatusPageRow = {
   description: string;
   custom_hostname: string | null;
   logo_url: string | null;
+  theme_config_json: string | null;
   is_public: number;
   created_at: number;
   updated_at: number;
@@ -53,6 +63,7 @@ function toApi(row: StatusPageRow, monitorIds: number[] = []) {
     description: row.description,
     custom_hostname: row.custom_hostname ?? null,
     logo_url: row.logo_url ?? null,
+    theme_config: parseStoredThemeConfigJson(row.theme_config_json),
     is_public: row.is_public === 1,
     monitor_ids: monitorIds,
     created_at: row.created_at,
@@ -142,7 +153,7 @@ async function ensureCustomHostnameAvailable(
 adminStatusPageRoutes.get('/', async (c) => {
   const { results } = await c.env.DB.prepare(
     `
-      SELECT id, slug, name, title, description, custom_hostname, logo_url, is_public, created_at, updated_at
+      SELECT id, slug, name, title, description, custom_hostname, logo_url, theme_config_json, is_public, created_at, updated_at
       FROM status_pages
       ORDER BY id
     `,
@@ -163,6 +174,11 @@ adminStatusPageRoutes.post('/', async (c) => {
   }
   input.custom_hostname = validateCustomHostname(input.custom_hostname);
   input.logo_url = validateLogoUrl(input.logo_url);
+  const parsedTheme = resolveThemeConfigInput(DEFAULT_STATUS_PAGE_THEME_CONFIG, input.theme_config);
+  if (!parsedTheme.ok) {
+    throw new AppError(400, 'INVALID_ARGUMENT', parsedTheme.message);
+  }
+  const themeConfigJson = serializeThemeConfigJson(parsedTheme.value);
   const monitorIds = normalizeIds(input.monitor_ids);
   await ensureMonitorsExist(c.env.DB, monitorIds);
   const duplicate = await c.env.DB.prepare('SELECT id FROM status_pages WHERE slug = ?1')
@@ -174,9 +190,9 @@ adminStatusPageRoutes.post('/', async (c) => {
   const now = Math.floor(Date.now() / 1000);
   const row = await c.env.DB.prepare(
     `
-      INSERT INTO status_pages (slug, name, title, description, custom_hostname, logo_url, is_public, created_at, updated_at)
-      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)
-      RETURNING id, slug, name, title, description, custom_hostname, logo_url, is_public, created_at, updated_at
+      INSERT INTO status_pages (slug, name, title, description, custom_hostname, logo_url, theme_config_json, is_public, created_at, updated_at)
+      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)
+      RETURNING id, slug, name, title, description, custom_hostname, logo_url, theme_config_json, is_public, created_at, updated_at
     `,
   ).bind(
     input.slug,
@@ -185,6 +201,7 @@ adminStatusPageRoutes.post('/', async (c) => {
     input.description,
     input.custom_hostname,
     input.logo_url,
+    themeConfigJson,
     input.is_public ? 1 : 0,
     now,
   ).first<StatusPageRow>();
@@ -214,8 +231,14 @@ adminStatusPageRoutes.patch('/:id', async (c) => {
   if (input.logo_url !== undefined) {
     input.logo_url = validateLogoUrl(input.logo_url);
   }
+  if (input.theme_config !== undefined) {
+    const precheck = resolveThemeConfigInput(DEFAULT_STATUS_PAGE_THEME_CONFIG, input.theme_config);
+    if (!precheck.ok) {
+      throw new AppError(400, 'INVALID_ARGUMENT', precheck.message);
+    }
+  }
   const existing = await c.env.DB.prepare(
-    `SELECT id, slug, name, title, description, custom_hostname, logo_url, is_public, created_at, updated_at FROM status_pages WHERE id = ?1`,
+    `SELECT id, slug, name, title, description, custom_hostname, logo_url, theme_config_json, is_public, created_at, updated_at FROM status_pages WHERE id = ?1`,
   ).bind(id).first<StatusPageRow>();
   if (!existing) throw new AppError(404, 'NOT_FOUND', 'Status page not found');
 
@@ -231,13 +254,27 @@ adminStatusPageRoutes.patch('/:id', async (c) => {
     await ensureCustomHostnameAvailable(c.env.DB, nextCustomHostname, id);
   }
 
+  const nextThemeConfig =
+    input.theme_config === undefined
+      ? existing.theme_config_json
+      : (() => {
+          const merged = resolveThemeConfigInput(
+            parseStoredThemeConfigJson(existing.theme_config_json),
+            input.theme_config,
+          );
+          if (!merged.ok) {
+            throw new AppError(400, 'INVALID_ARGUMENT', merged.message);
+          }
+          return serializeThemeConfigJson(merged.value);
+        })();
+
   const now = Math.floor(Date.now() / 1000);
   const row = await c.env.DB.prepare(
     `
       UPDATE status_pages
-      SET slug = ?1, name = ?2, title = ?3, description = ?4, custom_hostname = ?5, logo_url = ?6, is_public = ?7, updated_at = ?8
-      WHERE id = ?9
-      RETURNING id, slug, name, title, description, custom_hostname, logo_url, is_public, created_at, updated_at
+      SET slug = ?1, name = ?2, title = ?3, description = ?4, custom_hostname = ?5, logo_url = ?6, theme_config_json = ?7, is_public = ?8, updated_at = ?9
+      WHERE id = ?10
+      RETURNING id, slug, name, title, description, custom_hostname, logo_url, theme_config_json, is_public, created_at, updated_at
     `,
   ).bind(
     input.slug ?? existing.slug,
@@ -246,6 +283,7 @@ adminStatusPageRoutes.patch('/:id', async (c) => {
     input.description ?? existing.description,
     nextCustomHostname,
     input.logo_url === undefined ? existing.logo_url : input.logo_url,
+    nextThemeConfig,
     input.is_public === undefined ? existing.is_public : input.is_public ? 1 : 0,
     now,
     id,

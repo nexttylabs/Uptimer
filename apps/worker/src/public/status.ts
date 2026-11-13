@@ -49,6 +49,7 @@ export async function computePublicStatusPayload(
     site_title: page.title,
     site_description: page.description,
     logo_url: page.logo_url,
+    theme_config: page.theme_config,
     site_locale: settings.site_locale,
     site_timezone: settings.site_timezone,
     uptime_rating_level: monitorData.uptimeRatingLevel,

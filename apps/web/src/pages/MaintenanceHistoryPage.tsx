@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { useI18n } from '../app/I18nContext';
+import { useApplyStatusPageCustomCss } from '../app/statusPageTheme';
 import { useApplyServerLocaleSetting } from '../app/useApplyServerLocaleSetting';
 import { useStatusPageSlug } from '../app/StatusPageSlugContext';
 import { ApiError, fetchPublicMaintenanceWindows, fetchStatus } from '../api/client';
@@ -28,6 +29,7 @@ export function MaintenanceHistoryPage() {
   const statusQuery = useQuery({ queryKey: ['status', slug ?? 'default'], queryFn: () => fetchStatus(slug) });
   const timeZone = getBrowserTimeZone() ?? statusQuery.data?.site_timezone ?? 'UTC';
   useApplyServerLocaleSetting(statusQuery.data?.site_locale);
+  useApplyStatusPageCustomCss(statusQuery.data?.theme_config?.custom_css, slug ?? 'default');
   const monitorNames = useMemo(
     () => new Map((statusQuery.data?.monitors ?? []).map((m) => [m.id, m.name] as const)),
     [statusQuery.data?.monitors],
