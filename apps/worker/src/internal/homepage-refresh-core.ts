@@ -1,6 +1,7 @@
 import type { Env } from '../env';
 import type { Trace } from '../observability/trace';
 import type { PublicStatusResponse } from '../schemas/public-status';
+import type { StatusPageThemeConfig } from '../schemas/status-pages';
 import { LeaseLostError, startRenewableLease } from '../scheduler/lease-guard';
 import {
   fromRuntimeStatusCode,
@@ -491,6 +492,7 @@ export async function runInternalHomepageRefreshCore({
             site_title: string;
             site_description: string;
             logo_url: string | null;
+            theme_config: StatusPageThemeConfig;
             site_locale: 'auto' | 'en' | 'zh-CN' | 'zh-TW' | 'ja' | 'es';
             site_timezone: string;
             retention_check_results_days: number;

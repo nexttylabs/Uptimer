@@ -29,6 +29,7 @@ function validStateJson(versions: HomepageGuardVersions, validUntil = 1_700_000_
         site_title: 'Uptimer',
         site_description: '',
         logo_url: null,
+        theme_config: { custom_css: null, footer_hidden: false, footer_text: null },
         site_locale: 'auto',
         site_timezone: 'UTC',
         retention_check_results_days: 7,
@@ -173,6 +174,8 @@ describe('homepage guard DB cache state', () => {
         settings: {
           site_title: 'Uptimer',
           site_description: '',
+          logo_url: null,
+          theme_config: { custom_css: null, footer_hidden: false, footer_text: null },
           site_locale: 'auto',
           site_timezone: 'UTC',
           retention_check_results_days: 7,

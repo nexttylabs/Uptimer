@@ -1,6 +1,7 @@
 import {
   type PublicStatusResponse,
 } from '../schemas/public-status';
+import { DEFAULT_STATUS_PAGE_THEME_CONFIG } from '../schemas/status-pages';
 import { storedPublicStatusResponseSchema } from '../schemas/public-status-stored';
 import { publicStatusSnapshotKey } from './public-page-keys';
 
@@ -67,7 +68,12 @@ function parseJsonText(text: string): ParsedJsonText | null {
 
 function normalizeStatusSnapshotPayload(value: unknown): PublicStatusResponse | null {
   const stored = storedPublicStatusResponseSchema.safeParse(value);
-  return stored.success ? stored.data : null;
+  if (!stored.success) {
+    return null;
+  }
+  return stored.data.theme_config === undefined
+    ? { ...stored.data, theme_config: { ...DEFAULT_STATUS_PAGE_THEME_CONFIG } }
+    : stored.data;
 }
 
 function validateStatusSnapshotBodyJson(bodyJson: string): ValidatedStatusSnapshotJson | null {

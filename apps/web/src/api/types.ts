@@ -126,11 +126,24 @@ export interface PublicMonitor {
   uptime_days: UptimeDay[];
 }
 
+export interface StatusPageThemeConfig {
+  custom_css: string | null;
+  footer_hidden: boolean;
+  footer_text: string | null;
+}
+
+export interface StatusPageThemeConfigInput {
+  custom_css?: string | null;
+  footer_hidden?: boolean;
+  footer_text?: string | null;
+}
+
 export interface StatusResponse {
   generated_at: number;
   site_title: string;
   site_description: string;
   logo_url: string | null;
+  theme_config?: StatusPageThemeConfig;
   site_locale: LocaleSetting;
   site_timezone: string;
   uptime_rating_level: 1 | 2 | 3 | 4 | 5;
@@ -198,6 +211,7 @@ export interface PublicHomepageResponse {
   site_title: string;
   site_description: string;
   logo_url: string | null;
+  theme_config?: StatusPageThemeConfig;
   site_locale: LocaleSetting;
   site_timezone: string;
   uptime_rating_level: UptimeRatingLevel;
@@ -599,6 +613,7 @@ export interface StatusPage {
   description: string;
   custom_hostname: string | null;
   logo_url: string | null;
+  theme_config: StatusPageThemeConfig;
   is_public: boolean;
   monitor_ids: number[];
   created_at: number;
@@ -617,6 +632,7 @@ export interface CreateStatusPageInput {
   is_public?: boolean;
   custom_hostname?: string | null;
   logo_url?: string | null;
+  theme_config?: StatusPageThemeConfigInput | null;
   monitor_ids?: number[];
 }
 
@@ -628,6 +644,7 @@ export interface PatchStatusPageInput {
   is_public?: boolean;
   custom_hostname?: string | null;
   logo_url?: string | null;
+  theme_config?: StatusPageThemeConfigInput | null;
   monitor_ids?: number[];
 }
 

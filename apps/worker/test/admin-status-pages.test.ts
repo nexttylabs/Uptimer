@@ -183,7 +183,7 @@ describe('admin status page custom hostname', () => {
     const seenHostnames: (string | null)[] = [];
     const bindings = env([
       {
-        match: 'select id, slug, name, title, description, custom_hostname, logo_url, is_public, created_at, updated_at from status_pages where id = ?1',
+        match: 'select id, slug, name, title, description, custom_hostname, logo_url, theme_config_json, is_public, created_at, updated_at from status_pages where id = ?1',
         first: () => ({
           id: 4,
           slug: 'partners',
@@ -192,6 +192,7 @@ describe('admin status page custom hostname', () => {
           description: '',
           custom_hostname: 'status.partners.com',
           logo_url: null,
+          theme_config_json: null,
           is_public: 1,
           created_at: 10,
           updated_at: 10,
@@ -283,7 +284,7 @@ describe('admin status page logo url', () => {
     const seenLogos: (string | null)[] = [];
     const bindings = env([
       {
-        match: 'select id, slug, name, title, description, custom_hostname, logo_url, is_public, created_at, updated_at from status_pages where id = ?1',
+        match: 'select id, slug, name, title, description, custom_hostname, logo_url, theme_config_json, is_public, created_at, updated_at from status_pages where id = ?1',
         first: () => ({
           id: 4,
           slug: 'partners',
@@ -292,6 +293,7 @@ describe('admin status page logo url', () => {
           description: '',
           custom_hostname: null,
           logo_url: null,
+          theme_config_json: null,
           is_public: 1,
           created_at: 10,
           updated_at: 10,
@@ -310,6 +312,7 @@ describe('admin status page logo url', () => {
             description: '',
             custom_hostname: null,
             logo_url: _args[5] as string | null,
+            theme_config_json: _args[6] as string | null,
             is_public: 1,
             created_at: 10,
             updated_at: 20,

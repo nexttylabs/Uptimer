@@ -5,6 +5,10 @@ import {
   type PublicHomepageResponse,
 } from '../schemas/public-homepage';
 import type { PublicStatusResponse } from '../schemas/public-status';
+import {
+  parseStoredThemeConfigJson,
+  type StatusPageThemeConfig,
+} from '../schemas/status-pages';
 import type { Trace } from '../observability/trace';
 import {
   computeHomepageGuardValidUntil,
@@ -66,6 +70,7 @@ type HomepagePublicSettings = Awaited<ReturnType<typeof readPublicSiteSettings>>
   site_title: string;
   site_description: string;
   logo_url: string | null;
+  theme_config: StatusPageThemeConfig;
 };
 const HOMEPAGE_FAST_PUBLIC_LOCALES = new Set<HomepagePublicSettings['site_locale']>([
   'auto',
@@ -256,6 +261,9 @@ function hasMatchingHomepagePublicSettings(
     snapshot.site_title === settings.site_title &&
     snapshot.site_description === settings.site_description &&
     snapshot.logo_url === settings.logo_url &&
+    snapshot.theme_config.custom_css === settings.theme_config.custom_css &&
+    snapshot.theme_config.footer_hidden === settings.theme_config.footer_hidden &&
+    snapshot.theme_config.footer_text === settings.theme_config.footer_text &&
     snapshot.site_locale === settings.site_locale &&
     snapshot.site_timezone === settings.site_timezone &&
     snapshot.uptime_rating_level === settings.uptime_rating_level
@@ -291,6 +299,7 @@ function normalizeHomepageFastGuardSettings(row: {
   site_title_value: string | null | undefined;
   site_description_value: string | null | undefined;
   logo_url_value: string | null | undefined;
+  theme_config_json_value: string | null | undefined;
   site_locale_value: string | null | undefined;
   site_timezone_value: string | null | undefined;
   uptime_rating_level_value: string | null | undefined;
@@ -308,6 +317,7 @@ function normalizeHomepageFastGuardSettings(row: {
       allowEmpty: true,
     }),
     logo_url: normalizeHomepageFastGuardOptionalUrl(row.logo_url_value),
+    theme_config: parseStoredThemeConfigJson(row.theme_config_json_value),
     site_locale: HOMEPAGE_FAST_PUBLIC_LOCALES.has(
       (row.site_locale_value ?? '') as HomepagePublicSettings['site_locale'],
     )
@@ -1521,6 +1531,7 @@ export function homepageFromStatusPayload(
     site_title: status.site_title,
     site_description: status.site_description,
     logo_url: status.logo_url,
+    theme_config: status.theme_config,
     site_locale: status.site_locale,
     site_timezone: status.site_timezone,
     uptime_rating_level: status.uptime_rating_level,
@@ -2212,6 +2223,11 @@ async function readHomepageScheduledFastGuardState(
           WHERE slug = 'default' AND is_public = 1
         ) AS logo_url_value,
         (
+          SELECT theme_config_json
+          FROM status_pages
+          WHERE slug = 'default' AND is_public = 1
+        ) AS theme_config_json_value,
+        (
           SELECT value
           FROM settings
           WHERE key = 'site_locale'
@@ -2281,6 +2297,7 @@ async function readHomepageScheduledFastGuardState(
       site_title_value: string | null;
       site_description_value: string | null;
       logo_url_value: string | null;
+      theme_config_json_value: string | null;
       site_locale_value: string | null;
       site_timezone_value: string | null;
       uptime_rating_level_value: string | null;
@@ -2299,6 +2316,7 @@ async function readHomepageScheduledFastGuardState(
       site_title_value: row?.site_title_value,
       site_description_value: row?.site_description_value,
       logo_url_value: row?.logo_url_value,
+      theme_config_json_value: row?.theme_config_json_value,
       site_locale_value: row?.site_locale_value,
       site_timezone_value: row?.site_timezone_value,
       uptime_rating_level_value: row?.uptime_rating_level_value,
@@ -2491,6 +2509,7 @@ export async function tryComputePublicHomepagePayloadFromScheduledRuntimeUpdates
     site_title: settings.site_title,
     site_description: settings.site_description,
     logo_url: settings.logo_url,
+    theme_config: settings.theme_config,
     site_locale: settings.site_locale,
     site_timezone: settings.site_timezone,
     uptime_rating_level: monitorData.uptimeRatingLevel,
@@ -2534,7 +2553,13 @@ export async function computePublicHomepagePayload(
       readPublicSiteSettings(db),
       resolveDefaultPublicStatusPage(db),
     ]);
-    return { ...settings, site_title: page.title, site_description: page.description, logo_url: page.logo_url };
+    return {
+      ...settings,
+      site_title: page.title,
+      site_description: page.description,
+      logo_url: page.logo_url,
+      theme_config: page.theme_config,
+    };
   });
   const maintenanceWindowsPromise = withTraceAsync(
     trace,
@@ -2630,6 +2655,7 @@ export async function computePublicHomepagePayload(
     site_title: settings.site_title,
     site_description: settings.site_description,
     logo_url: settings.logo_url,
+    theme_config: settings.theme_config,
     site_locale: settings.site_locale,
     site_timezone: settings.site_timezone,
     uptime_rating_level: monitorData.uptimeRatingLevel,
@@ -2666,6 +2692,7 @@ export async function computePublicHomepageArtifactPayload(
     site_title: page.title,
     site_description: page.description,
     logo_url: page.logo_url,
+    theme_config: page.theme_config,
   }));
   const bootstrapRowsPromise = listHomepageMonitorRows(db, includeHiddenMonitors);
   const maintenanceWindowsPromise = listVisibleMaintenanceWindows(db, now, includeHiddenMonitors);
@@ -2702,6 +2729,7 @@ export async function computePublicHomepageArtifactPayload(
     site_title: settings.site_title,
     site_description: settings.site_description,
     logo_url: settings.logo_url,
+    theme_config: settings.theme_config,
     site_locale: settings.site_locale,
     site_timezone: settings.site_timezone,
     uptime_rating_level: settings.uptime_rating_level,

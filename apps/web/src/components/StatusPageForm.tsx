@@ -4,7 +4,22 @@ import type {
   CreateStatusPageInput,
   PatchStatusPageInput,
   StatusPage,
+  StatusPageThemeConfig,
 } from '../api/types';
+
+export function buildThemeConfigPayload(draft: {
+  customCss: string;
+  footerHidden: boolean;
+  footerText: string;
+}): StatusPageThemeConfig {
+  const trimmedCss = draft.customCss.trim();
+  const trimmedFooterText = draft.footerText.trim();
+  return {
+    custom_css: trimmedCss === '' ? null : trimmedCss,
+    footer_hidden: draft.footerHidden,
+    footer_text: trimmedFooterText === '' ? null : trimmedFooterText,
+  };
+}
 import { useI18n } from '../app/I18nContext';
 import { Button, FIELD_HELP_CLASS, FIELD_LABEL_CLASS, INPUT_CLASS, TEXTAREA_CLASS } from './ui';
 
@@ -46,6 +61,9 @@ export function StatusPageForm(props: CreateProps | EditProps) {
   const [description, setDescription] = useState(page?.description ?? '');
   const [customHostname, setCustomHostname] = useState(page?.custom_hostname ?? '');
   const [logoUrl, setLogoUrl] = useState(page?.logo_url ?? '');
+  const [customCss, setCustomCss] = useState(page?.theme_config?.custom_css ?? '');
+  const [footerHidden, setFooterHidden] = useState(page?.theme_config?.footer_hidden ?? false);
+  const [footerText, setFooterText] = useState(page?.theme_config?.footer_text ?? '');
   const [isPublic, setIsPublic] = useState(page?.is_public ?? true);
   const [selectedMonitorIds, setSelectedMonitorIds] = useState<number[]>(
     page?.monitor_ids ?? [],
@@ -80,6 +98,11 @@ export function StatusPageForm(props: CreateProps | EditProps) {
     const monitorIds = [...new Set(selectedMonitorIds)];
     const trimmedHostname = customHostname.trim();
     const trimmedLogoUrl = logoUrl.trim();
+    const themeConfig = buildThemeConfigPayload({
+      customCss,
+      footerHidden,
+      footerText,
+    });
 
     if (page) {
       const data: PatchStatusPageInput = {
@@ -90,6 +113,7 @@ export function StatusPageForm(props: CreateProps | EditProps) {
         is_public: isPublic,
         custom_hostname: trimmedHostname === '' ? null : trimmedHostname,
         logo_url: trimmedLogoUrl === '' ? null : trimmedLogoUrl,
+        theme_config: themeConfig,
         monitor_ids: monitorIds,
       };
       props.onSubmit(data);
@@ -104,6 +128,7 @@ export function StatusPageForm(props: CreateProps | EditProps) {
       is_public: isPublic,
       custom_hostname: trimmedHostname === '' ? null : trimmedHostname,
       logo_url: trimmedLogoUrl === '' ? null : trimmedLogoUrl,
+      theme_config: themeConfig,
       monitor_ids: monitorIds,
     };
     props.onSubmit(data);
@@ -176,6 +201,52 @@ export function StatusPageForm(props: CreateProps | EditProps) {
           spellCheck={false}
         />
         <div className={FIELD_HELP_CLASS}>{t('status_page_form.logo_url_help')}</div>
+      </div>
+
+      <div>
+        <label className={FIELD_LABEL_CLASS}>{t('status_page_form.custom_css')}</label>
+        <textarea
+          name="custom_css"
+          value={customCss}
+          onChange={(e) => setCustomCss(e.target.value)}
+          rows={4}
+          className={`${TEXTAREA_CLASS} font-mono text-xs`}
+          placeholder={t('status_page_form.custom_css_placeholder')}
+          spellCheck={false}
+        />
+        <div className={FIELD_HELP_CLASS}>{t('status_page_form.custom_css_help')}</div>
+      </div>
+
+      <label className="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">
+        <input
+          type="checkbox"
+          name="footer_hidden"
+          checked={footerHidden}
+          onChange={(e) => setFooterHidden(e.target.checked)}
+          className="mt-1"
+        />
+        <span>
+          <span className="font-medium text-slate-900 dark:text-slate-100">
+            {t('status_page_form.footer_hidden')}
+          </span>
+          <span className={`mt-1 block ${FIELD_HELP_CLASS}`}>
+            {t('status_page_form.footer_hidden_help')}
+          </span>
+        </span>
+      </label>
+
+      <div>
+        <label className={FIELD_LABEL_CLASS}>{t('status_page_form.footer_text')}</label>
+        <input
+          name="footer_text"
+          value={footerText}
+          onChange={(e) => setFooterText(e.target.value)}
+          maxLength={200}
+          className={INPUT_CLASS}
+          placeholder={t('status_page_form.footer_text_placeholder')}
+          autoComplete="off"
+        />
+        <div className={FIELD_HELP_CLASS}>{t('status_page_form.footer_text_help')}</div>
       </div>
 
       <div>

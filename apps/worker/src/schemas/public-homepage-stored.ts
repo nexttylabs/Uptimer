@@ -191,6 +191,20 @@ function validateMaintenancePreview(value: unknown): boolean {
   );
 }
 
+function validateThemeConfig(value: unknown): boolean {
+  if (value === undefined) {
+    return true;
+  }
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    isNullableString(value.custom_css) &&
+    typeof value.footer_hidden === 'boolean' &&
+    isNullableString(value.footer_text)
+  );
+}
+
 function isStoredPublicHomepageResponse(value: unknown): value is PublicHomepageResponse {
   if (!isRecord(value)) {
     return false;
@@ -203,6 +217,8 @@ function isStoredPublicHomepageResponse(value: unknown): value is PublicHomepage
     isNonNegativeInt(value.monitor_count_total) &&
     typeof value.site_title === 'string' &&
     typeof value.site_description === 'string' &&
+    (value.logo_url === undefined || isNullableString(value.logo_url)) &&
+    validateThemeConfig(value.theme_config) &&
     isStringMember(SITE_LOCALES, value.site_locale) &&
     typeof value.site_timezone === 'string' &&
     isUptimeRatingLevel(value.uptime_rating_level) &&

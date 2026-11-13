@@ -109,6 +109,205 @@ export function parseLogoUrlInput(value: unknown): string | null {
 
 export const LOGO_URL_ERROR = 'logo_url must be an absolute http(s) URL of at most 2048 characters';
 
+export const CUSTOM_CSS_MAX_LENGTH = 16_384;
+export const FOOTER_TEXT_MAX_LENGTH = 200;
+
+export const CUSTOM_CSS_ERROR =
+  'custom_css must be at most 16384 characters, contain no control characters other than tabs/newlines, and exclude <, @import, script URLs, or legacy CSS expressions';
+export const FOOTER_TEXT_ERROR =
+  'footer_text must be a single-line plain text string of at most 200 characters';
+
+export type StatusPageThemeConfig = {
+  custom_css: string | null;
+  footer_hidden: boolean;
+  footer_text: string | null;
+};
+
+export const DEFAULT_STATUS_PAGE_THEME_CONFIG: StatusPageThemeConfig = {
+  custom_css: null,
+  footer_hidden: false,
+  footer_text: null,
+};
+
+export const statusPageThemeConfigSchema = z.object({
+  custom_css: z.string().nullable().default(null),
+  footer_hidden: z.boolean().default(false),
+  footer_text: z.string().nullable().default(null),
+});
+
+const themeConfigInputSchema = z
+  .object({
+    custom_css: z.union([z.string(), z.null()]).optional(),
+    footer_hidden: z.boolean().optional(),
+    footer_text: z.union([z.string(), z.null()]).optional(),
+  })
+  .strict();
+
+export type StatusPageThemeConfigInput = z.infer<typeof themeConfigInputSchema>;
+
+// Allow \t (0x09), \n (0x0a), \r (0x0d); reject all other C0 controls and DEL.
+function hasDisallowedCssControlChar(value: string): boolean {
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (code === 0x7f) return true;
+    if (code <= 0x1f && code !== 0x09 && code !== 0x0a && code !== 0x0d) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function hasDisallowedFooterControlChar(value: string): boolean {
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (code <= 0x1f || code === 0x7f) {
+      return true;
+    }
+  }
+  return false;
+}
+
+const UNSAFE_CSS_PATTERNS: RegExp[] = [
+  /</,
+  /@import/i,
+  /javascript\s*:/i,
+  /vbscript\s*:/i,
+  /data\s*:\s*text\/html/i,
+  /expression\s*\(/i,
+  /-moz-binding/i,
+  /behavior\s*:/i,
+];
+
+function unescapeCssForInspection(css: string): string {
+  const withoutComments = css.replace(/\/\*[\s\S]*?(?:\*\/|$)/g, '');
+  return withoutComments
+    .replace(/\\(?:\r\n|[\r\n\f])/g, '')
+    .replace(
+      /\\([0-9a-fA-F]{1,6})[ \t\r\n\f]?|\\([^\r\n\f0-9a-fA-F])/g,
+      (_, hex: string | undefined, escapedChar: string | undefined) => {
+        if (hex !== undefined) {
+          const codePoint = Number.parseInt(hex, 16);
+          if (codePoint === 0 || codePoint > 0x10ffff || (codePoint >= 0xd800 && codePoint <= 0xdfff)) {
+            return '\uFFFD';
+          }
+          return String.fromCodePoint(codePoint);
+        }
+        return escapedChar ?? '';
+      },
+    );
+}
+
+export type ThemeFieldParseResult<T> = { ok: true; value: T } | { ok: false; message: string };
+
+export function parseCustomCssInput(value: unknown): ThemeFieldParseResult<string | null> {
+  if (value === undefined || value === null) return { ok: true, value: null };
+  if (typeof value !== 'string') return { ok: false, message: CUSTOM_CSS_ERROR };
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return { ok: true, value: null };
+  if (trimmed.length > CUSTOM_CSS_MAX_LENGTH) return { ok: false, message: CUSTOM_CSS_ERROR };
+  if (hasDisallowedCssControlChar(trimmed)) {
+    return { ok: false, message: CUSTOM_CSS_ERROR };
+  }
+  if (trimmed.includes('<')) return { ok: false, message: CUSTOM_CSS_ERROR };
+  const inspected = unescapeCssForInspection(trimmed);
+  for (const pattern of UNSAFE_CSS_PATTERNS) {
+    if (pattern.test(inspected)) {
+      return { ok: false, message: CUSTOM_CSS_ERROR };
+    }
+  }
+  return { ok: true, value: trimmed };
+}
+
+export function parseFooterTextInput(value: unknown): ThemeFieldParseResult<string | null> {
+  if (value === undefined || value === null) return { ok: true, value: null };
+  if (typeof value !== 'string') return { ok: false, message: FOOTER_TEXT_ERROR };
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return { ok: true, value: null };
+  if (trimmed.length > FOOTER_TEXT_MAX_LENGTH) return { ok: false, message: FOOTER_TEXT_ERROR };
+  if (hasDisallowedFooterControlChar(trimmed)) {
+    return { ok: false, message: FOOTER_TEXT_ERROR };
+  }
+  return { ok: true, value: trimmed };
+}
+
+export function isDefaultThemeConfig(config: StatusPageThemeConfig): boolean {
+  return (
+    config.custom_css === null &&
+    config.footer_hidden === false &&
+    config.footer_text === null
+  );
+}
+
+export function serializeThemeConfigJson(config: StatusPageThemeConfig): string | null {
+  if (isDefaultThemeConfig(config)) return null;
+  return JSON.stringify({
+    custom_css: config.custom_css,
+    footer_hidden: config.footer_hidden,
+    footer_text: config.footer_text,
+  });
+}
+
+export function parseStoredThemeConfigJson(raw: string | null | undefined): StatusPageThemeConfig {
+  if (typeof raw !== 'string') {
+    return { ...DEFAULT_STATUS_PAGE_THEME_CONFIG };
+  }
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return { ...DEFAULT_STATUS_PAGE_THEME_CONFIG };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return { ...DEFAULT_STATUS_PAGE_THEME_CONFIG };
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return { ...DEFAULT_STATUS_PAGE_THEME_CONFIG };
+  }
+  const record = parsed as Record<string, unknown>;
+  const customCss = parseCustomCssInput(record.custom_css);
+  const footerText = parseFooterTextInput(record.footer_text);
+  const footerHidden = typeof record.footer_hidden === 'boolean' ? record.footer_hidden : false;
+  return {
+    custom_css: customCss.ok ? customCss.value : null,
+    footer_hidden: footerHidden,
+    footer_text: footerText.ok ? footerText.value : null,
+  };
+}
+
+export function resolveThemeConfigInput(
+  base: StatusPageThemeConfig,
+  input: StatusPageThemeConfigInput | null | undefined,
+): ThemeFieldParseResult<StatusPageThemeConfig> {
+  if (input === undefined) {
+    return { ok: true, value: { ...base } };
+  }
+  if (input === null) {
+    return { ok: true, value: { ...DEFAULT_STATUS_PAGE_THEME_CONFIG } };
+  }
+  let customCss = base.custom_css;
+  if (input.custom_css !== undefined) {
+    const parsedCss = parseCustomCssInput(input.custom_css);
+    if (!parsedCss.ok) return parsedCss;
+    customCss = parsedCss.value;
+  }
+  let footerText = base.footer_text;
+  if (input.footer_text !== undefined) {
+    const parsedFooter = parseFooterTextInput(input.footer_text);
+    if (!parsedFooter.ok) return parsedFooter;
+    footerText = parsedFooter.value;
+  }
+  const footerHidden = input.footer_hidden === undefined ? base.footer_hidden : input.footer_hidden;
+  return {
+    ok: true,
+    value: {
+      custom_css: customCss,
+      footer_hidden: footerHidden,
+      footer_text: footerText,
+    },
+  };
+}
+
 export const createStatusPageInputSchema = z.object({
   slug: slugSchema,
   name: z.string().trim().min(1).max(100),
@@ -117,6 +316,7 @@ export const createStatusPageInputSchema = z.object({
   is_public: z.boolean().optional().default(true),
   custom_hostname: z.union([z.string(), z.null()]).optional().default(null),
   logo_url: z.union([z.string(), z.null()]).optional().default(null),
+  theme_config: themeConfigInputSchema.nullable().optional(),
   monitor_ids: idListSchema.optional().default([]),
 });
 
@@ -129,6 +329,7 @@ export const patchStatusPageInputSchema = z
     is_public: z.boolean().optional(),
     custom_hostname: z.union([z.string(), z.null()]).optional(),
     logo_url: z.union([z.string(), z.null()]).optional(),
+    theme_config: themeConfigInputSchema.nullable().optional(),
     monitor_ids: idListSchema.optional(),
   })
   .refine((value) => Object.keys(value).length > 0, { message: 'At least one field must be provided' });
