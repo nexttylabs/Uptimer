@@ -8,6 +8,7 @@ import { I18nProvider } from './app/I18nContext';
 import { queryClient } from './app/queryClient';
 import { router } from './app/router';
 import { ThemeProvider } from './app/ThemeContext';
+import { resolveStatusPageThemeConfig } from './app/statusPageTheme';
 import type { PublicHomepageResponse, StatusResponse } from './api/types';
 import './styles.css';
 
@@ -91,6 +92,7 @@ function homepageFromStatus(status: StatusResponse): PublicHomepageResponse {
     site_title: status.site_title,
     site_description: status.site_description,
     logo_url: status.logo_url,
+    theme_config: resolveStatusPageThemeConfig(status.theme_config),
     site_locale: status.site_locale,
     site_timezone: status.site_timezone,
     uptime_rating_level: status.uptime_rating_level,

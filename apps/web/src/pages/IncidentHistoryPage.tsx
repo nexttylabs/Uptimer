@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { useI18n } from '../app/I18nContext';
+import { useApplyStatusPageCustomCss } from '../app/statusPageTheme';
 import { useApplyServerLocaleSetting } from '../app/useApplyServerLocaleSetting';
 import { useStatusPageSlug } from '../app/StatusPageSlugContext';
 import { ApiError, fetchPublicIncidents, fetchStatus } from '../api/client';
@@ -179,6 +180,7 @@ export function IncidentHistoryPage() {
   const statusQuery = useQuery({ queryKey: ['status', slug ?? 'default'], queryFn: () => fetchStatus(slug) });
   const timeZone = getBrowserTimeZone() ?? statusQuery.data?.site_timezone ?? 'UTC';
   useApplyServerLocaleSetting(statusQuery.data?.site_locale);
+  useApplyStatusPageCustomCss(statusQuery.data?.theme_config?.custom_css, slug);
 
   const query = useQuery({
     queryKey: ['public-incidents', 'resolved', cursor, slug ?? 'default'],

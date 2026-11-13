@@ -1,4 +1,8 @@
 import { AppError } from '../middleware/errors';
+import {
+  parseStoredThemeConfigJson,
+  type StatusPageThemeConfig,
+} from '../schemas/status-pages';
 
 export type PublicStatusPage = {
   id: number;
@@ -8,11 +12,24 @@ export type PublicStatusPage = {
   description: string;
   custom_hostname: string | null;
   logo_url: string | null;
+  theme_config: StatusPageThemeConfig;
 };
 
-type StatusPageRow = PublicStatusPage & { is_public: number };
+type PublicStatusPageDbRow = Omit<PublicStatusPage, 'theme_config'> & {
+  theme_config_json: string | null;
+};
+
+type StatusPageRow = PublicStatusPageDbRow & { is_public: number };
 
 export type AccessibleStatusPage = PublicStatusPage & { is_private: boolean };
+
+function toPublicStatusPage(row: PublicStatusPageDbRow): PublicStatusPage {
+  const { theme_config_json, ...rest } = row;
+  return {
+    ...rest,
+    theme_config: parseStoredThemeConfigJson(theme_config_json),
+  };
+}
 
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -24,18 +41,18 @@ export async function resolvePublicStatusPage(
     throw new AppError(404, 'NOT_FOUND', 'Status page not found');
   }
 
-  const page = await db
+  const row = await db
     .prepare(
       `
-        SELECT id, slug, name, title, description, custom_hostname, logo_url
+        SELECT id, slug, name, title, description, custom_hostname, logo_url, theme_config_json
         FROM status_pages
         WHERE slug = ?1 AND is_public = 1
       `,
     )
     .bind(slug)
-    .first<PublicStatusPage>();
-  if (!page) throw new AppError(404, 'NOT_FOUND', 'Status page not found');
-  return page;
+    .first<PublicStatusPageDbRow>();
+  if (!row) throw new AppError(404, 'NOT_FOUND', 'Status page not found');
+  return toPublicStatusPage(row);
 }
 
 export async function resolveAccessibleStatusPage(
@@ -50,7 +67,7 @@ export async function resolveAccessibleStatusPage(
   const row = await db
     .prepare(
       `
-        SELECT id, slug, name, title, description, custom_hostname, logo_url, is_public
+        SELECT id, slug, name, title, description, custom_hostname, logo_url, theme_config_json, is_public
         FROM status_pages
         WHERE slug = ?1
       `,
@@ -62,7 +79,7 @@ export async function resolveAccessibleStatusPage(
   }
 
   const { is_public, ...page } = row;
-  return { ...page, is_private: is_public === 0 };
+  return { ...toPublicStatusPage(page), is_private: is_public === 0 };
 }
 
 export async function resolveOptionalAccessibleStatusPage(
@@ -85,7 +102,7 @@ export async function resolveAccessibleStatusPageById(
   const row = await db
     .prepare(
       `
-        SELECT id, slug, name, title, description, custom_hostname, logo_url, is_public
+        SELECT id, slug, name, title, description, custom_hostname, logo_url, theme_config_json, is_public
         FROM status_pages
         WHERE id = ?1
       `,
@@ -97,25 +114,25 @@ export async function resolveAccessibleStatusPageById(
   }
 
   const { is_public, ...page } = row;
-  return { ...page, is_private: is_public === 0 };
+  return { ...toPublicStatusPage(page), is_private: is_public === 0 };
 }
 
 export async function resolvePublicStatusPageById(
   db: D1Database,
   id: number,
 ): Promise<PublicStatusPage> {
-  const page = await db
+  const row = await db
     .prepare(
       `
-        SELECT id, slug, name, title, description, custom_hostname, logo_url
+        SELECT id, slug, name, title, description, custom_hostname, logo_url, theme_config_json
         FROM status_pages
         WHERE id = ?1 AND is_public = 1
       `,
     )
     .bind(id)
-    .first<PublicStatusPage>();
-  if (!page) throw new AppError(404, 'NOT_FOUND', 'Status page not found');
-  return page;
+    .first<PublicStatusPageDbRow>();
+  if (!row) throw new AppError(404, 'NOT_FOUND', 'Status page not found');
+  return toPublicStatusPage(row);
 }
 
 export async function resolveOptionalPublicStatusPage(
@@ -182,16 +199,16 @@ export async function resolvePublicStatusPageByHostname(
   db: D1Database,
   hostname: string,
 ): Promise<PublicStatusPage> {
-  const page = await db
+  const row = await db
     .prepare(
       `
-        SELECT id, slug, name, title, description, custom_hostname, logo_url
+        SELECT id, slug, name, title, description, custom_hostname, logo_url, theme_config_json
         FROM status_pages
         WHERE custom_hostname = ?1 AND is_public = 1
       `,
     )
     .bind(hostname)
-    .first<PublicStatusPage>();
-  if (!page) throw new AppError(404, 'NOT_FOUND', 'Status page not found');
-  return page;
+    .first<PublicStatusPageDbRow>();
+  if (!row) throw new AppError(404, 'NOT_FOUND', 'Status page not found');
+  return toPublicStatusPage(row);
 }

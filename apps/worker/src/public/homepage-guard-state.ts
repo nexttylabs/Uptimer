@@ -1,6 +1,11 @@
 import { z } from 'zod';
 
 import type { Trace } from '../observability/trace';
+import {
+  DEFAULT_STATUS_PAGE_THEME_CONFIG,
+  statusPageThemeConfigSchema,
+  type StatusPageThemeConfig,
+} from '../schemas/status-pages';
 import { maintenanceWindowStatusPageVisibilityPredicate } from './visibility';
 
 const SETTINGS_KEY = 'homepage:settings';
@@ -35,6 +40,7 @@ export type CachedHomepageScheduledFastGuardState = {
     site_title: string;
     site_description: string;
     logo_url: string | null;
+    theme_config: StatusPageThemeConfig;
     site_locale: 'auto' | 'en' | 'zh-CN' | 'zh-TW' | 'ja' | 'es';
     site_timezone: string;
     retention_check_results_days: number;
@@ -84,6 +90,9 @@ const homepageGuardStateJsonSchema = z.object({
       site_title: z.string().max(100),
       site_description: z.string().max(500),
       logo_url: z.string().max(2048).nullable(),
+      theme_config: statusPageThemeConfigSchema.default(() => ({
+        ...DEFAULT_STATUS_PAGE_THEME_CONFIG,
+      })),
       site_locale: z.enum(['auto', 'en', 'zh-CN', 'zh-TW', 'ja', 'es']),
       site_timezone: z.string().max(64),
       retention_check_results_days: z.number().int().min(1).max(365),

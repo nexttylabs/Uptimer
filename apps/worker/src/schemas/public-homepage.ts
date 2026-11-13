@@ -1,5 +1,10 @@
 import { z } from 'zod';
 
+import {
+  DEFAULT_STATUS_PAGE_THEME_CONFIG,
+  statusPageThemeConfigSchema,
+} from './status-pages';
+
 const monitorStatusSchema = z.enum(['up', 'down', 'maintenance', 'paused', 'unknown']);
 const uptimeRatingLevelSchema = z.number().int().min(1).max(5);
 const incidentStatusSchema = z.enum(['investigating', 'identified', 'monitoring', 'resolved']);
@@ -99,6 +104,7 @@ export const publicHomepageResponseSchema = z.object({
   site_title: z.string().default('Uptimer'),
   site_description: z.string().default(''),
   logo_url: z.string().nullable().default(null),
+  theme_config: statusPageThemeConfigSchema.default(() => ({ ...DEFAULT_STATUS_PAGE_THEME_CONFIG })),
   site_locale: z.enum(['auto', 'en', 'zh-CN', 'zh-TW', 'ja', 'es']).default('auto'),
   site_timezone: z.string().default('UTC'),
   uptime_rating_level: uptimeRatingLevelSchema,
@@ -128,6 +134,7 @@ export const storedPublicHomepageResponseSchema = z.object({
   site_title: z.string(),
   site_description: z.string(),
   logo_url: z.string().nullable().default(null),
+  theme_config: statusPageThemeConfigSchema.default(() => ({ ...DEFAULT_STATUS_PAGE_THEME_CONFIG })),
   site_locale: z.enum(['auto', 'en', 'zh-CN', 'zh-TW', 'ja', 'es']),
   site_timezone: z.string(),
   uptime_rating_level: uptimeRatingLevelSchema,

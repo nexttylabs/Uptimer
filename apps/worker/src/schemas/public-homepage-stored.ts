@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import type { PublicHomepageResponse } from './public-homepage';
+import { isValidStoredThemeConfig } from './status-pages';
 
 const SITE_LOCALES = new Set(['auto', 'en', 'zh-CN', 'zh-TW', 'ja', 'es']);
 const MONITOR_STATUSES = new Set(['up', 'down', 'maintenance', 'paused', 'unknown']);
@@ -203,6 +204,7 @@ function isStoredPublicHomepageResponse(value: unknown): value is PublicHomepage
     isNonNegativeInt(value.monitor_count_total) &&
     typeof value.site_title === 'string' &&
     typeof value.site_description === 'string' &&
+    (value.theme_config === undefined || isValidStoredThemeConfig(value.theme_config)) &&
     isStringMember(SITE_LOCALES, value.site_locale) &&
     typeof value.site_timezone === 'string' &&
     isUptimeRatingLevel(value.uptime_rating_level) &&

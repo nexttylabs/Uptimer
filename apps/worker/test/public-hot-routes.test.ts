@@ -19,6 +19,7 @@ function sampleStatusPayload(now = 1_728_000_000) {
     generated_at: now,
     site_title: 'Uptimer',
     site_description: '',
+    theme_config: { custom_css: null, footer_hidden: false, footer_text: null },
     site_locale: 'auto',
     site_timezone: 'UTC',
     uptime_rating_level: 3,

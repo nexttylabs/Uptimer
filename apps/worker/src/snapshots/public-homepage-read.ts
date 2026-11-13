@@ -6,6 +6,7 @@ import {
   publicHomepageStoredRenderArtifactSchema,
   storedPublicHomepageResponseSchema,
 } from '../schemas/public-homepage-stored';
+import { DEFAULT_STATUS_PAGE_THEME_CONFIG } from '../schemas/status-pages';
 
 const SNAPSHOT_KEY = 'homepage';
 const SNAPSHOT_ARTIFACT_KEY = 'homepage:artifact';
@@ -152,10 +153,20 @@ function parseJsonText(text: string): ParsedJsonText | null {
   }
 }
 
+function materializeHomepageThemeConfig(payload: PublicHomepageResponse): PublicHomepageResponse {
+  if (payload.theme_config !== undefined) {
+    return payload;
+  }
+  return {
+    ...payload,
+    theme_config: { ...DEFAULT_STATUS_PAGE_THEME_CONFIG },
+  };
+}
+
 function parseDirectHomepagePayload(value: unknown): PublicHomepageResponse | null {
   const storedPayload = storedPublicHomepageResponseSchema.safeParse(value);
   if (storedPayload.success) {
-    return storedPayload.data;
+    return materializeHomepageThemeConfig(storedPayload.data);
   }
   if (!isRecord(value)) {
     return null;
@@ -171,6 +182,10 @@ function parseDirectHomepagePayload(value: unknown): PublicHomepageResponse | nu
     site_title: value.site_title,
     site_description: value.site_description,
     logo_url: value.logo_url ?? null,
+    theme_config:
+      value.theme_config === undefined
+        ? { ...DEFAULT_STATUS_PAGE_THEME_CONFIG }
+        : value.theme_config,
     site_locale: value.site_locale,
     site_timezone: value.site_timezone,
     uptime_rating_level: value.uptime_rating_level,
@@ -183,7 +198,7 @@ function parseDirectHomepagePayload(value: unknown): PublicHomepageResponse | nu
     resolved_incident_preview: value.resolved_incident_preview ?? null,
     maintenance_history_preview: value.maintenance_history_preview ?? null,
   });
-  return normalizedPayload.success ? normalizedPayload.data : null;
+  return normalizedPayload.success ? materializeHomepageThemeConfig(normalizedPayload.data) : null;
 }
 
 function parseStoredHomepageRenderArtifactSnapshot(value: unknown): PublicHomepageResponse | null {
@@ -193,7 +208,7 @@ function parseStoredHomepageRenderArtifactSnapshot(value: unknown): PublicHomepa
   }
 
   if ('snapshot' in artifact.data) {
-    return artifact.data.snapshot;
+    return materializeHomepageThemeConfig(artifact.data.snapshot);
   }
 
   const parsedSnapshot = parseJsonText(artifact.data.snapshot_json);
@@ -255,6 +270,32 @@ function normalizeHomepagePayloadBodyJsonForKey(
     : null;
 }
 
+function serializeNormalizedArtifact(
+  artifact: ReturnType<typeof publicHomepageStoredRenderArtifactSchema.parse>,
+  snapshot: PublicHomepageResponse,
+  rawTrimmed?: string,
+): string {
+  if ('snapshot' in artifact) {
+    if (artifact.snapshot.theme_config === undefined) {
+      return JSON.stringify({ ...artifact, snapshot });
+    }
+    return rawTrimmed ?? JSON.stringify(artifact);
+  }
+  const parsedSnapshot = parseJsonText(artifact.snapshot_json);
+  const hasThemeConfig =
+    parsedSnapshot !== null &&
+    isRecord(parsedSnapshot.value) &&
+    'theme_config' in parsedSnapshot.value &&
+    parsedSnapshot.value.theme_config !== undefined;
+  if (!hasThemeConfig) {
+    return JSON.stringify({
+      ...artifact,
+      snapshot_json: JSON.stringify(snapshot),
+    });
+  }
+  return rawTrimmed ?? JSON.stringify(artifact);
+}
+
 function normalizeHomepageArtifactBodyJson(bodyJson: string, expectedGeneratedAt?: number): string | null {
   const parsed = parseJsonText(bodyJson);
   if (parsed === null) return null;
@@ -269,7 +310,7 @@ function normalizeHomepageArtifactBodyJson(bodyJson: string, expectedGeneratedAt
     ) {
       return null;
     }
-    return parsed.trimmed;
+    return serializeNormalizedArtifact(artifact.data, snapshot, parsed.trimmed);
   }
   if (!isRecord(parsed.value)) {
     return null;
@@ -292,7 +333,7 @@ function normalizeHomepageArtifactBodyJson(bodyJson: string, expectedGeneratedAt
   ) {
     return null;
   }
-  return JSON.stringify(legacyArtifact.data);
+  return serializeNormalizedArtifact(legacyArtifact.data, snapshot);
 }
 
 function parseHomepagePayloadSnapshotForKey(

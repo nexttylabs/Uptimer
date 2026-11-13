@@ -491,6 +491,11 @@ export async function runInternalHomepageRefreshCore({
             site_title: string;
             site_description: string;
             logo_url: string | null;
+            theme_config: {
+              custom_css: string | null;
+              footer_hidden: boolean;
+              footer_text: string | null;
+            };
             site_locale: 'auto' | 'en' | 'zh-CN' | 'zh-TW' | 'ja' | 'es';
             site_timezone: string;
             retention_check_results_days: number;

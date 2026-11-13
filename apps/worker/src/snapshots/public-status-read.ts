@@ -2,6 +2,7 @@ import {
   type PublicStatusResponse,
 } from '../schemas/public-status';
 import { storedPublicStatusResponseSchema } from '../schemas/public-status-stored';
+import { DEFAULT_STATUS_PAGE_THEME_CONFIG } from '../schemas/status-pages';
 import { publicStatusSnapshotKey } from './public-page-keys';
 
 const SNAPSHOT_KEY = 'status';
@@ -67,7 +68,16 @@ function parseJsonText(text: string): ParsedJsonText | null {
 
 function normalizeStatusSnapshotPayload(value: unknown): PublicStatusResponse | null {
   const stored = storedPublicStatusResponseSchema.safeParse(value);
-  return stored.success ? stored.data : null;
+  if (!stored.success) {
+    return null;
+  }
+  if (stored.data.theme_config === undefined) {
+    return {
+      ...stored.data,
+      theme_config: { ...DEFAULT_STATUS_PAGE_THEME_CONFIG },
+    };
+  }
+  return stored.data;
 }
 
 function validateStatusSnapshotBodyJson(bodyJson: string): ValidatedStatusSnapshotJson | null {
@@ -77,12 +87,19 @@ function validateStatusSnapshotBodyJson(bodyJson: string): ValidatedStatusSnapsh
   }
 
   const payload = normalizeStatusSnapshotPayload(parsed.value);
-  return payload
-    ? {
-        bodyJson: parsed.trimmed,
-        data: payload,
-      }
-    : null;
+  if (!payload) {
+    return null;
+  }
+  const hasThemeConfig =
+    typeof parsed.value === 'object' &&
+    parsed.value !== null &&
+    !Array.isArray(parsed.value) &&
+    'theme_config' in parsed.value &&
+    parsed.value.theme_config !== undefined;
+  return {
+    bodyJson: hasThemeConfig ? parsed.trimmed : JSON.stringify(payload),
+    data: payload,
+  };
 }
 
 function toSnapshotUpdatedAt(row: StatusSnapshotMetadataRow): number {
